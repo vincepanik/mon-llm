@@ -19,7 +19,7 @@ changer une ligne. Seul le fichier de config change.
 | Étape | Brique | Fichier | État |
 |---|---|---|---|
 | 1 | Tokenizer BPE écrit à la main | `tokenizer/bpe.py` | fait |
-| 2 | Transformer minimal, niveau caractère, ~1M params | `model.py` | à faire |
+| 2 | Transformer minimal, niveau caractère, ~1M params | `model.py` | fait |
 | 3 | From scratch 30 à 150M sur corpus français | `configs/run_150m.py` | à faire |
 | 4 | Modernisation mesurée : RoPE, RMSNorm, SwiGLU, GQA | `model.py` | à faire |
 | 5 | Post-training : SFT puis DPO | à créer | à faire |
