@@ -1,0 +1,18 @@
+# Environnement
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Données et poids : jamais dans git
+data/*.bin
+data/*.txt
+data/raw/
+checkpoints/*
+!checkpoints/.gitkeep
+
+# Logs
+logs/
+wandb/
+*.log
+.pytest_cache/
