@@ -12,10 +12,13 @@ Forme du modèle : celle de GPT-2 small, un peu plus profonde, avec les briques
 de Llama (RoPE, RMSNorm, SwiGLU, GQA 12 têtes / 4 têtes kv).
 """
 
+from pathlib import Path
+
 from configs.base import Config
 
 config = Config(
     run_name="run_150m",
+    data_dir=Path("data/big"),  # le gros corpus, séparé des 40 Mo de debug
     vocab_size=32000,
     n_layer=16,
     n_head=12,

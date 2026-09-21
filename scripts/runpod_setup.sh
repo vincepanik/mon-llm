@@ -13,7 +13,7 @@ set -euo pipefail
 
 cd /workspace
 if [ ! -d mon-llm ]; then
-  git clone https://github.com/TON_COMPTE/mon-llm.git
+  git clone https://github.com/vincepanik/mon-llm.git
 fi
 cd mon-llm
 git pull
@@ -22,9 +22,11 @@ pip install -q -r requirements.txt
 pip install -q flash-attn --no-build-isolation || echo "flash-attn non installé, use_flash_attn restera sans effet"
 
 # Les données et checkpoints vivent sur le volume, pas dans le repo
-mkdir -p /workspace/data /workspace/checkpoints
-ln -sfn /workspace/data/train.bin data/train.bin
-ln -sfn /workspace/data/val.bin data/val.bin
+# (les .bin du vrai run, fabriqués sur le Mac par data/prepare.py, s'envoient une
+# seule fois dans /workspace/data ; configs/run_150m.py les lit dans data/big/)
+mkdir -p /workspace/data /workspace/checkpoints data/big
+ln -sfn /workspace/data/train.bin data/big/train.bin
+ln -sfn /workspace/data/val.bin data/big/val.bin
 ln -sfn /workspace/checkpoints checkpoints
 
 nvidia-smi
