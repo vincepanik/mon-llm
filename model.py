@@ -7,12 +7,14 @@ au style GPT.
   - N blocs identiques : [LayerNorm -> attention causale -> résidu -> LayerNorm -> MLP -> résidu]
   - LayerNorm final, puis projection vers le vocabulaire
 
-Version 2 (étape 4) : on remplace brique par brique, en mesurant à chaque fois,
-  - positions apprises -> RoPE
-  - LayerNorm -> RMSNorm
-  - MLP GELU -> SwiGLU
-  - attention multi-têtes -> GQA
-  - attention naïve -> FlashAttention (CUDA uniquement, derrière cfg.use_flash_attn)
+Version 2 (étape 4) : on remplace brique par brique, en mesurant à chaque fois.
+Chaque remplacement est un interrupteur dans la config, la valeur par défaut
+donne la version 1 :
+  - cfg.pos  = "rope"     positions apprises -> RoPE
+  - cfg.norm = "rmsnorm"  LayerNorm -> RMSNorm
+  - cfg.mlp  = "swiglu"   MLP GELU -> SwiGLU
+  - cfg.n_kv_head < n_head   attention multi-têtes -> GQA
+  - cfg.use_flash_attn    attention naïve -> FlashAttention (CUDA uniquement)
 
 Conventions de nommage des tenseurs, valables partout dans ce fichier :
   B = batch (nombre de séquences traitées en parallèle)
@@ -31,6 +33,73 @@ import torch.nn.functional as F
 from configs.base import Config
 
 
+# ----------------------------------------------------------------- normalisation
+
+
+class RMSNorm(nn.Module):
+    """
+    Comme LayerNorm, sans soustraire la moyenne et sans biais : on divise
+    seulement par la norme quadratique moyenne, puis on multiplie par un gain
+    appris. Moins de calcul, et en pratique aussi bon. C'est ce qu'utilisent
+    Llama, Mistral, Qwen, DeepSeek.
+    """
+
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Calcul en float32 même sous bf16 : la somme des carrés déborde vite.
+        xf = x.float()
+        xf = xf * torch.rsqrt(xf.pow(2).mean(-1, keepdim=True) + self.eps)
+        return xf.type_as(x) * self.weight
+
+
+def make_norm(cfg: Config) -> nn.Module:
+    if cfg.norm == "rmsnorm":
+        return RMSNorm(cfg.n_embd)
+    return nn.LayerNorm(cfg.n_embd, bias=cfg.bias)
+
+
+# ----------------------------------------------------------------------- RoPE
+
+
+def rope_cache(block_size: int, head_size: int, theta: float) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Tables cos/sin de RoPE, forme (block_size, head_size).
+
+    Chaque paire de dimensions (i, i + head_size/2) de la tête est vue comme un
+    point du plan qu'on fait tourner d'un angle proportionnel à la position.
+    Les paires ont des vitesses de rotation différentes : rapides pour les
+    premières, très lentes pour les dernières (theta règle l'étalement).
+    """
+    inv_freq = 1.0 / (theta ** (torch.arange(0, head_size, 2).float() / head_size))
+    t = torch.arange(block_size).float()
+    freqs = torch.outer(t, inv_freq)  # (T, head_size / 2)
+    emb = torch.cat([freqs, freqs], dim=-1)  # (T, head_size)
+    return emb.cos(), emb.sin()
+
+
+def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """
+    Fait tourner q ou k, forme (B, n_head, T, head_size).
+
+    Le produit scalaire de deux vecteurs tournés ne dépend que de l'écart entre
+    leurs positions : c'est ce qui donne au modèle la notion de distance
+    relative, sans rien apprendre, et sans limite de longueur en principe.
+    """
+    T = x.size(2)
+    cos, sin = cos[:T], sin[:T]
+    half = x.size(-1) // 2
+    x1, x2 = x[..., :half], x[..., half:]
+    rotated = torch.cat([-x2, x1], dim=-1)
+    return (x * cos + rotated * sin).type_as(x)
+
+
+# ------------------------------------------------------------------ attention
+
+
 class CausalSelfAttention(nn.Module):
     """
     Attention multi-têtes, causale.
@@ -41,26 +110,41 @@ class CausalSelfAttention(nn.Module):
     cette position-là pèse dans le résultat. « Causale » veut dire qu'on regarde
     uniquement vers l'arrière, sinon le modèle lirait la réponse qu'on lui
     demande de deviner.
+
+    GQA (grouped-query attention) : plusieurs têtes de questions partagent la
+    même paire étiquette/contenu. Ça ne change presque rien à la qualité, mais à
+    l'inférence le cache des k et v (ce qui remplit la mémoire du GPU quand on
+    génère) est divisé par n_head / n_kv_head.
     """
 
     def __init__(self, cfg: Config):
         super().__init__()
         assert cfg.n_embd % cfg.n_head == 0
         self.n_head = cfg.n_head
-        self.n_embd = cfg.n_embd
+        self.n_kv_head = cfg.n_kv_head or cfg.n_head
+        self.head_size = cfg.n_embd // cfg.n_head
         self.dropout = cfg.dropout
 
-        # Les trois projections q, k, v en une seule matrice : un seul gros
-        # produit matriciel est plus rapide que trois petits.
-        self.c_attn = nn.Linear(cfg.n_embd, 3 * cfg.n_embd, bias=cfg.bias)
+        # q pour toutes les têtes, k et v pour les têtes kv seulement, en une
+        # seule matrice : un seul gros produit matriciel plutôt que trois petits.
+        self.c_attn = nn.Linear(
+            cfg.n_embd, (cfg.n_head + 2 * self.n_kv_head) * self.head_size, bias=cfg.bias
+        )
         # Projection de sortie, qui remélange ce que les têtes ont trouvé.
         self.c_proj = nn.Linear(cfg.n_embd, cfg.n_embd, bias=cfg.bias)
 
         self.attn_dropout = nn.Dropout(cfg.dropout)
         self.resid_dropout = nn.Dropout(cfg.dropout)
 
+        self.rope = cfg.pos == "rope"
+        if self.rope:
+            cos, sin = rope_cache(cfg.block_size, self.head_size, cfg.rope_theta)
+            # persistent=False : recalculé à la construction, pas stocké dans le checkpoint.
+            self.register_buffer("rope_cos", cos, persistent=False)
+            self.register_buffer("rope_sin", sin, persistent=False)
+
         # FlashAttention : même calcul, mais fusionné en un seul noyau CUDA qui
-        # n'écrit jamais la matrice T x T en mémoire. Réservé à l'étape 4.
+        # n'écrit jamais la matrice T x T en mémoire.
         self.flash = cfg.use_flash_attn and hasattr(F, "scaled_dot_product_attention")
 
         if not self.flash:
@@ -73,40 +157,55 @@ class CausalSelfAttention(nn.Module):
                 torch.tril(torch.ones(cfg.block_size, cfg.block_size)).view(
                     1, 1, cfg.block_size, cfg.block_size
                 ),
+                persistent=False,
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, T, C = x.shape
-        head_size = C // self.n_head
+        nh, nkv, hs = self.n_head, self.n_kv_head, self.head_size
 
-        # Une passe, trois tenseurs de taille (B, T, C).
-        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
-        # On découpe les canaux en n_head têtes, et on met la tête en dimension 1
-        # pour que les produits matriciels suivants traitent les têtes en parallèle.
-        # (B, T, C) -> (B, n_head, T, head_size)
-        q = q.view(B, T, self.n_head, head_size).transpose(1, 2)
-        k = k.view(B, T, self.n_head, head_size).transpose(1, 2)
-        v = v.view(B, T, self.n_head, head_size).transpose(1, 2)
+        q, k, v = self.c_attn(x).split([nh * hs, nkv * hs, nkv * hs], dim=2)
+        # On découpe les canaux en têtes, et on met la tête en dimension 1 pour
+        # que les produits matriciels suivants traitent les têtes en parallèle.
+        # (B, T, n_head * hs) -> (B, n_head, T, hs)
+        q = q.view(B, T, nh, hs).transpose(1, 2)
+        k = k.view(B, T, nkv, hs).transpose(1, 2)
+        v = v.view(B, T, nkv, hs).transpose(1, 2)
+
+        if self.rope:
+            q = apply_rope(q, self.rope_cos, self.rope_sin)
+            k = apply_rope(k, self.rope_cos, self.rope_sin)
 
         if self.flash:
             y = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.dropout if self.training else 0.0, is_causal=True
+                q, k, v,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=True,
+                enable_gqa=nkv != nh,
             )
         else:
+            if nkv != nh:
+                # GQA sur le chemin naïf : on duplique k et v pour que chaque
+                # tête de question ait sa tête kv en face.
+                k = k.repeat_interleave(nh // nkv, dim=1)
+                v = v.repeat_interleave(nh // nkv, dim=1)
             # Chaque question contre chaque étiquette : (B, n_head, T, T).
             # La division par sqrt(head_size) empêche les scores de devenir énormes
             # quand les têtes sont larges, ce qui écraserait le softmax.
-            att = (q @ k.transpose(-2, -1)) / math.sqrt(head_size)
+            att = (q @ k.transpose(-2, -1)) / math.sqrt(hs)
             # Interdit de regarder vers l'avant : -inf devient 0 après le softmax.
             att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
             att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
             # Moyenne des contenus, pondérée par les scores.
-            y = att @ v  # (B, n_head, T, head_size)
+            y = att @ v  # (B, n_head, T, hs)
 
         # On recolle les têtes : (B, n_head, T, hs) -> (B, T, C)
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         return self.resid_dropout(self.c_proj(y))
+
+
+# ------------------------------------------------------------------------ MLP
 
 
 class MLP(nn.Module):
@@ -119,13 +218,38 @@ class MLP(nn.Module):
 
     def __init__(self, cfg: Config):
         super().__init__()
-        self.c_fc = nn.Linear(cfg.n_embd, 4 * cfg.n_embd, bias=cfg.bias)
+        hidden = cfg.mlp_hidden or 4 * cfg.n_embd
+        self.c_fc = nn.Linear(cfg.n_embd, hidden, bias=cfg.bias)
         self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * cfg.n_embd, cfg.n_embd, bias=cfg.bias)
+        self.c_proj = nn.Linear(hidden, cfg.n_embd, bias=cfg.bias)
         self.dropout = nn.Dropout(cfg.dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.dropout(self.c_proj(self.gelu(self.c_fc(x))))
+
+
+class SwiGLU(nn.Module):
+    """
+    Le MLP de Llama. Deux projections montantes au lieu d'une : l'une passe par
+    une non-linéarité (SiLU) et sert de porte, elle module l'autre terme à
+    terme. Pour garder le même nombre de paramètres qu'un MLP 4x avec trois
+    matrices au lieu de deux, la largeur cachée est ~8/3 x n_embd.
+    """
+
+    def __init__(self, cfg: Config):
+        super().__init__()
+        # 8/3 x n_embd, arrondi au multiple de 64 supérieur (bon pour les GPU).
+        hidden = cfg.mlp_hidden or 64 * math.ceil(8 * cfg.n_embd / 3 / 64)
+        self.w_gate = nn.Linear(cfg.n_embd, hidden, bias=cfg.bias)
+        self.w_up = nn.Linear(cfg.n_embd, hidden, bias=cfg.bias)
+        self.c_proj = nn.Linear(hidden, cfg.n_embd, bias=cfg.bias)
+        self.dropout = nn.Dropout(cfg.dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.dropout(self.c_proj(F.silu(self.w_gate(x)) * self.w_up(x)))
+
+
+# ---------------------------------------------------------------------- Block
 
 
 class Block(nn.Module):
@@ -136,21 +260,24 @@ class Block(nn.Module):
     pas tout. C'est ce qui permet d'empiler des dizaines d'étages sans que le
     gradient se perde en route.
 
-    Pre-norm (LayerNorm avant, pas après) : plus stable à l'entraînement que
+    Pre-norm (normalisation avant, pas après) : plus stable à l'entraînement que
     l'ordre du papier original, et c'est ce que fait GPT-2.
     """
 
     def __init__(self, cfg: Config):
         super().__init__()
-        self.ln_1 = nn.LayerNorm(cfg.n_embd, bias=cfg.bias)
+        self.ln_1 = make_norm(cfg)
         self.attn = CausalSelfAttention(cfg)
-        self.ln_2 = nn.LayerNorm(cfg.n_embd, bias=cfg.bias)
-        self.mlp = MLP(cfg)
+        self.ln_2 = make_norm(cfg)
+        self.mlp = SwiGLU(cfg) if cfg.mlp == "swiglu" else MLP(cfg)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
+
+
+# ------------------------------------------------------------------------ GPT
 
 
 class GPT(nn.Module):
@@ -169,11 +296,12 @@ class GPT(nn.Module):
         # wte : chaque token devient un vecteur de n_embd nombres, appris.
         self.wte = nn.Embedding(cfg.vocab_size, cfg.n_embd)
         # wpe : chaque position (0, 1, 2, ...) aussi. Sans ça, l'attention verrait
-        # la phrase comme un sac de mots, sans ordre. RoPE remplacera ça à l'étape 4.
-        self.wpe = nn.Embedding(cfg.block_size, cfg.n_embd)
+        # la phrase comme un sac de mots, sans ordre. Avec RoPE, l'ordre est
+        # injecté directement dans l'attention et wpe disparaît.
+        self.wpe = nn.Embedding(cfg.block_size, cfg.n_embd) if cfg.pos == "learned" else None
         self.drop = nn.Dropout(cfg.dropout)
         self.blocks = nn.ModuleList([Block(cfg) for _ in range(cfg.n_layer)])
-        self.ln_f = nn.LayerNorm(cfg.n_embd, bias=cfg.bias)
+        self.ln_f = make_norm(cfg)
         self.lm_head = nn.Linear(cfg.n_embd, cfg.vocab_size, bias=False)
 
         # Poids partagés entre l'entrée et la sortie : la matrice qui transforme
@@ -208,8 +336,11 @@ class GPT(nn.Module):
             f"séquence de {T} tokens, mais le contexte du modèle est de {self.cfg.block_size}"
         )
 
-        pos = torch.arange(T, dtype=torch.long, device=idx.device)
-        x = self.drop(self.wte(idx) + self.wpe(pos))  # (B, T, C)
+        x = self.wte(idx)  # (B, T, C)
+        if self.wpe is not None:
+            pos = torch.arange(T, dtype=torch.long, device=idx.device)
+            x = x + self.wpe(pos)
+        x = self.drop(x)
         for block in self.blocks:
             x = block(x)
         x = self.ln_f(x)
@@ -256,7 +387,7 @@ class GPT(nn.Module):
         """AdamW, avec weight decay sur les matrices seulement, pas sur les biais ni les normes."""
         params = [p for p in self.parameters() if p.requires_grad]
         # Une matrice (dim >= 2) participe à un produit matriciel : on la régularise.
-        # Un biais ou un gain de LayerNorm (dim < 2) ne doit pas être tiré vers zéro.
+        # Un biais ou un gain de normalisation (dim < 2) ne doit pas être tiré vers zéro.
         decay = [p for p in params if p.dim() >= 2]
         no_decay = [p for p in params if p.dim() < 2]
         groups = [

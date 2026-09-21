@@ -30,6 +30,14 @@ class Config:
     block_size: int = 128          # longueur de contexte
     dropout: float = 0.0
     bias: bool = False
+    # Modernisations (étape 4), chacune mesurable séparément. Les valeurs par
+    # défaut donnent l'architecture GPT-2 de l'étape 2.
+    norm: str = "layernorm"        # layernorm | rmsnorm
+    pos: str = "learned"           # learned (embeddings de position) | rope
+    rope_theta: float = 10000.0
+    mlp: str = "gelu"              # gelu (MLP 4x) | swiglu
+    mlp_hidden: int | None = None  # None : 4*n_embd pour gelu, ~8/3*n_embd pour swiglu
+    n_kv_head: int | None = None   # None : autant que n_head (attention classique) ; moins = GQA
 
     # Entraînement
     batch_size: int = 16
@@ -61,6 +69,13 @@ class Config:
     def validate(self) -> None:
         assert 0.0 < self.throttle <= 1.0, "throttle doit être entre 0 et 1"
         assert self.n_embd % self.n_head == 0, "n_embd doit être divisible par n_head"
+        assert self.norm in ("layernorm", "rmsnorm"), self.norm
+        assert self.pos in ("learned", "rope"), self.pos
+        assert self.mlp in ("gelu", "swiglu"), self.mlp
+        if self.pos == "rope":
+            assert (self.n_embd // self.n_head) % 2 == 0, "RoPE veut une taille de tête paire"
+        if self.n_kv_head is not None:
+            assert self.n_head % self.n_kv_head == 0, "n_head doit être un multiple de n_kv_head"
         assert self.warmup_steps < self.max_steps
 
     @property

@@ -35,8 +35,11 @@ pip install -r requirements.txt
 ## Commandes
 
 ```bash
-# Récupérer du corpus (web français récent, FineWeb-2), 20 Mo pour déboguer
-python data/download_fineweb.py --mb 20
+# Récupérer du corpus, 20 Mo par source pour déboguer
+# (sources : fineweb_hq | wikipedia | science | fineweb)
+python data/download.py --source fineweb_hq --mb 20
+python data/download.py --source wikipedia --mb 20
+python data/download.py --source science --mb 20
 
 # Entraîner le tokenizer BPE (un échantillon suffit, inutile de lire tout le corpus)
 python tokenizer/bpe.py --input data/raw --vocab-size 32000 --sample-mb 50
@@ -59,7 +62,7 @@ pytest
 ```
 mon-llm/
   configs/        une config par expérience, la base est dans base.py
-  data/           download_fineweb.py récupère le corpus, prepare.py le transforme en .bin (ignorés par git)
+  data/           download.py récupère le corpus, prepare.py le transforme en .bin (ignorés par git)
   tokenizer/      le tokenizer BPE, brique 1, et vocab.json une fois entraîné
   model.py        l'architecture, brique 2 puis 4
   train.py        la boucle d'entraînement, identique partout
