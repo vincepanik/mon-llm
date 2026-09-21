@@ -31,6 +31,7 @@ from datasets import load_dataset
 
 DATASET = "HuggingFaceFW/fineweb-2"
 CONFIG = "fra_Latn"
+SEPARATEUR = "<|endoftext|>"
 
 
 def main() -> None:
@@ -64,14 +65,16 @@ def main() -> None:
             if int(ex["dump"][8:12]) < args.depuis:
                 trop_vieux += 1
                 continue
-            texte = ex["text"].strip()
+            # Si une page parle de notre séparateur, on ne veut pas qu'elle le contienne.
+            texte = ex["text"].replace(SEPARATEUR, "").strip()
             if len(texte) < args.min_chars:
                 jetes += 1
                 continue
-            # Un document par bloc, séparés par une ligne vide : le modèle apprend
-            # ainsi où un texte commence et se termine.
-            f.write(texte + "\n\n")
-            ecrits += len(texte.encode("utf-8")) + 2
+            # Une ligne <|endoftext|> entre deux documents : data/prepare.py la
+            # remplace par le vrai token de fin, pour que le modèle apprenne où
+            # un texte commence et se termine.
+            f.write(texte + "\n" + SEPARATEUR + "\n")
+            ecrits += len(texte.encode("utf-8")) + len(SEPARATEUR) + 2
             gardes += 1
             if gardes % 2000 == 0:
                 print(f"  {ecrits / 1024 / 1024:6.1f} Mo | {gardes:,} documents | "
