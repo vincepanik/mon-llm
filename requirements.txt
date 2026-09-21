@@ -1,4 +1,4 @@
-torch>=2.4
+torch>=2.5          # enable_gqa de scaled_dot_product_attention
 numpy>=1.26
 tqdm>=4.66
 pytest>=8.0

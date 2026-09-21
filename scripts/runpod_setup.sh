@@ -18,8 +18,10 @@ fi
 cd mon-llm
 git pull
 
+# Pas de paquet flash-attn : use_flash_attn passe par scaled_dot_product_attention
+# de PyTorch, qui embarque déjà FlashAttention sur CUDA. Compiler flash-attn
+# prendrait jusqu'à une heure de GPU payé pour rien.
 pip install -q -r requirements.txt
-pip install -q flash-attn --no-build-isolation || echo "flash-attn non installé, use_flash_attn restera sans effet"
 
 # Les données et checkpoints vivent sur le volume, pas dans le repo
 # (les .bin du vrai run, fabriqués sur le Mac par data/prepare.py, s'envoient une
