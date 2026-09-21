@@ -64,9 +64,21 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--resume", action="store_true")
+    # Pour un essai court sur la vraie config (règle 2 du README) sans écrire de
+    # fichier de config : --max-steps 50 --run-name test. Attention, max_steps
+    # règle aussi la courbe du taux d'apprentissage : un essai ne sert qu'à
+    # vérifier que tout tourne et à mesurer la vitesse, pas la qualité.
+    parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--run-name", default=None)
     args = parser.parse_args()
 
     cfg = load_config(args.config)
+    if args.max_steps is not None:
+        cfg.max_steps = args.max_steps
+        cfg.warmup_steps = min(cfg.warmup_steps, max(1, args.max_steps // 10))
+    if args.run_name is not None:
+        cfg.run_name = args.run_name
+    cfg.validate()
     set_seed(cfg.seed)
     device = get_device(cfg.device)
     dtype = get_dtype(device, cfg.use_bf16)
@@ -93,6 +105,10 @@ def main() -> None:
     if cfg.use_compile and device.type == "cuda":
         model = torch.compile(model)
 
+    tokens_par_step = cfg.batch_size * cfg.grad_accum_steps * cfg.block_size
+    print(f"{tokens_par_step:,} tokens par étape, {cfg.max_steps:,} étapes "
+          f"= {tokens_par_step * cfg.max_steps / 1e9:.2f} milliards de tokens", flush=True)
+
     throttle = Throttle(cfg.throttle)
     t_last = time.time()
 
@@ -117,11 +133,13 @@ def main() -> None:
         if step % cfg.log_interval == 0:
             dt = time.time() - t_last
             t_last = time.time()
-            print(f"step {step:6d} | loss {loss.item():.4f} | lr {lr:.2e} | {dt / cfg.log_interval * 1000:.0f} ms/step")
+            tokens_par_s = cfg.log_interval * tokens_par_step / dt
+            print(f"step {step:6d} | loss {loss.item():.4f} | lr {lr:.2e} | "
+                  f"{dt / cfg.log_interval * 1000:.0f} ms/step | {tokens_par_s / 1000:.0f}k tokens/s", flush=True)
 
         if step % cfg.eval_interval == 0:
             val_loss = evaluate(model, val_data, cfg, device, ctx)
-            print(f"step {step:6d} | val {val_loss:.4f}")
+            print(f"step {step:6d} | val {val_loss:.4f}", flush=True)
             if val_loss < best_val:
                 best_val = val_loss
                 save_checkpoint(cfg.run_dir / "best.pt", model, optimizer, step, cfg, best_val)
