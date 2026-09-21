@@ -20,9 +20,31 @@ changer une ligne. Seul le fichier de config change.
 |---|---|---|---|
 | 1 | Tokenizer BPE écrit à la main | `tokenizer/bpe.py` | fait |
 | 2 | Transformer minimal, niveau caractère, ~1M params | `model.py` | fait |
-| 3 | From scratch 30 à 150M sur corpus français | `configs/run_150m.py` | à faire |
-| 4 | Modernisation mesurée : RoPE, RMSNorm, SwiGLU, GQA | `model.py` | à faire |
+| 4 | Modernisation mesurée : RoPE, RMSNorm, SwiGLU, GQA | `model.py` | fait |
+| 3 | From scratch ~125M sur corpus français | `configs/run_150m.py` | à faire |
 | 5 | Post-training : SFT puis DPO | à créer | à faire |
+
+L'étape 4 est passée avant la 3 : on ne paye le GPU qu'une fois, autant que ce
+soit avec l'architecture finale.
+
+### Étape 4, ce qui a été mesuré
+
+Sur le Mac, 0,8M paramètres (4 couches x 128), 3 000 étapes sur 40 Mo de
+français niveau octet (Wikipédia + science), même graine, même planning de lr.
+Loss de validation à la fin :
+
+| Variante | Paramètres | val | Écart |
+|---|---|---|---|
+| GPT-2 (étape 2) | 0,84M | 1,608 | référence |
+| + RMSNorm | 0,84M | 1,613 | 0 : pas un gain de qualité, un gain de vitesse sur GPU |
+| + RoPE | 0,82M | 1,510 | **-0,10** |
+| + SwiGLU | 0,90M | 1,515 | **-0,09** (un peu plus de paramètres à cette taille, arrondi à 64) |
+| + GQA (4 têtes, 2 kv) | 0,77M | 1,626 | +0,02 : le prix du cache kv divisé par deux |
+| Les quatre | 0,82M | **1,441** | **-0,17** |
+
+Le bruit entre deux graines est de l'ordre de 0,01 : RoPE et SwiGLU sont des
+gains nets, GQA un léger coût assumé, RMSNorm neutre. Les configs de debug et
+du vrai run utilisent les quatre.
 
 ## Installation
 

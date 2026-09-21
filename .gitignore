@@ -8,6 +8,7 @@ __pycache__/
 data/*.bin
 data/*.txt
 data/raw/
+data/big/
 checkpoints/*
 !checkpoints/.gitkeep
 
