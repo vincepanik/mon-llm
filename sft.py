@@ -78,7 +78,8 @@ def evaluer(model, exemples, taille, pad, device) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True, help="modèle pré-entraîné (étape 3)")
-    parser.add_argument("--data", default="data/sft/conversations.json")
+    parser.add_argument("--data", nargs="+", default=["data/sft/conversations.json"],
+                        help="un ou plusieurs fichiers de conversations, mélangés")
     parser.add_argument("--out", default="checkpoints/sft")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=5e-5)
@@ -112,7 +113,10 @@ def main() -> None:
 
     tok = BPETokenizer.load(cfg.tokenizer_path)
     pad = tok.special_tokens["<|pad|>"]
-    convs = json.loads(Path(args.data).read_text(encoding="utf-8"))
+    convs = [c for f in args.data for c in json.loads(Path(f).read_text(encoding="utf-8"))]
+    if len(args.data) > 1:
+        # Mélangés pour que la validation contienne un peu de chaque source.
+        random.Random(args.seed).shuffle(convs)
     extra = json.loads(Path(args.extra).read_text(encoding="utf-8")) if args.extra else []
 
     def encoder(c):
