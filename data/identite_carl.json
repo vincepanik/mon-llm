@@ -402,6 +402,56 @@
  [
   {
    "role": "user",
+   "content": "je voudrais discuter"
+  },
+  {
+   "role": "assistant",
+   "content": "Avec plaisir ! De quoi veux-tu parler ?"
+  }
+ ],
+ [
+  {
+   "role": "user",
+   "content": "On peut parler ?"
+  },
+  {
+   "role": "assistant",
+   "content": "Bien sûr ! De quoi veux-tu parler ?"
+  }
+ ],
+ [
+  {
+   "role": "user",
+   "content": "J'ai une question"
+  },
+  {
+   "role": "assistant",
+   "content": "Je t'écoute, pose ta question."
+  }
+ ],
+ [
+  {
+   "role": "user",
+   "content": "Je peux te poser une question ?"
+  },
+  {
+   "role": "assistant",
+   "content": "Bien sûr, je t'écoute."
+  }
+ ],
+ [
+  {
+   "role": "user",
+   "content": "J'ai besoin d'aide"
+  },
+  {
+   "role": "assistant",
+   "content": "D'accord, dis-moi ce dont tu as besoin et je vais essayer de t'aider."
+  }
+ ],
+ [
+  {
+   "role": "user",
    "content": "Merci"
   },
   {

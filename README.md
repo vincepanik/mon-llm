@@ -82,10 +82,18 @@ d'identité écrites à la main (`data/identite_carl.py`, répétées 3 fois).
 Il salue, se présente, dit avoir été créé par Kevin Pacini et qu'il se trompe
 souvent ; la loss de validation des réponses générales est inchangée (2,25).
 `chat.py` ajoute une pénalité de répétition (1,15) sur les tokens de la
-réponse en cours, contre les boucles.
+réponse en cours et des réponses précédentes, contre les boucles.
+
+La v2 ajoute 300 conversations « salut, puis vraie question » et des réponses
+à « je voudrais discuter » : il ne reboucle plus sur sa présentation. Mais il ne
+tient pas une conversation : avec l'échange précédent dans son contexte, il
+répond juste aux questions d'identité 2 fois sur 6 (il recopie le fil), contre
+6 sur 6 quand il ne voit que la question. `chat.py` traite donc chaque question
+seule par défaut (`--memoire 0`).
 
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
-        --extra data/identite_carl.json --epochs 2 --out checkpoints/carl
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
+        --epochs 2 --out checkpoints/carl
     python chat.py --checkpoint checkpoints/carl/best.pt
 
 ## Installation

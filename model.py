@@ -365,6 +365,7 @@ class GPT(nn.Module):
         top_k: int | None = None,
         stop_token: int | None = None,
         repetition_penalty: float = 1.0,
+        penaliser_aussi: list[int] | None = None,
     ) -> torch.Tensor:
         """
         Complète `idx` token par token. Chaque token tiré est réinjecté en entrée.
@@ -379,17 +380,24 @@ class GPT(nn.Module):
         pendant cette génération (pas ceux de la question : répondre « la
         capitale de l'Italie est Rome » doit rester possible). Contre les
         boucles « la compréhension et la compréhension ».
+        penaliser_aussi : tokens à pénaliser en plus, par exemple ceux des
+        réponses précédentes de l'assistant, pour qu'il ne les recopie pas.
         """
         was_training = self.training
         self.eval()
         debut = idx.size(1)
+        extra = None
+        if penaliser_aussi:
+            extra = torch.tensor(sorted(set(penaliser_aussi)), device=idx.device).expand(idx.size(0), -1)
         for _ in range(max_new_tokens):
             # Le modèle ne voit que block_size tokens : on garde la fin.
             idx_cond = idx[:, -self.cfg.block_size :]
             logits, _ = self(idx_cond)
             logits = logits[:, -1, :]
-            if repetition_penalty != 1.0 and idx.size(1) > debut:
+            if repetition_penalty != 1.0 and (idx.size(1) > debut or extra is not None):
                 deja = idx[:, debut:]
+                if extra is not None:
+                    deja = torch.cat([deja, extra], dim=1)
                 vus = logits.gather(1, deja)
                 # Divisé si positif, multiplié si négatif : dans les deux cas, moins probable.
                 vus = torch.where(vus > 0, vus / repetition_penalty, vus * repetition_penalty)

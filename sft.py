@@ -93,6 +93,10 @@ def main() -> None:
                         help="conversations en plus (ex. data/identite_carl.json), entraînement seulement")
     parser.add_argument("--extra-repeat", type=int, default=3,
                         help="nombre de copies de --extra : peu nombreuses, elles doivent peser")
+    parser.add_argument("--enchainer", type=int, default=0,
+                        help="conversations fabriquées : un salut de --extra, puis une vraie "
+                             "conversation d'entraînement. Apprend à répondre à la question "
+                             "suivante au lieu de recopier le salut.")
     parser.add_argument("--val-ratio", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=1337)
     args = parser.parse_args()
@@ -119,14 +123,22 @@ def main() -> None:
         ids, cibles = ids[:n], cibles[:n]
         return (ids, cibles) if any(c != IGNORE for c in cibles) else None
 
-    exemples = [e for e in map(encoder, convs) if e is not None]
-    n_val = max(1, int(len(exemples) * args.val_ratio))
+    paires = [(c, e) for c in convs if (e := encoder(c)) is not None]
+    n_val = max(1, int(len(paires) * args.val_ratio))
     # La validation ne contient que des conversations générales : elle mesure
     # si le modèle répond mieux, pas s'il a retenu son propre nom.
-    val, train = exemples[:n_val], exemples[n_val:]
+    val = [e for _, e in paires[:n_val]]
+    train = [e for _, e in paires[n_val:]]
     train += [e for e in map(encoder, extra) if e is not None] * args.extra_repeat
     if extra:
         print(f"+ {len(extra)} conversations de {args.extra}, x{args.extra_repeat}")
+    if args.enchainer and extra:
+        saluts = [c for c in extra if len(c) == 2 and len(c[0]["content"]) <= 25]
+        generales = [c for c, _ in paires[n_val:]]  # jamais de validation ici
+        r = random.Random(args.seed + 1)
+        fabriquees = [r.choice(saluts) + r.choice(generales) for _ in range(args.enchainer)]
+        train += [e for e in map(encoder, fabriquees) if e is not None]
+        print(f"+ {args.enchainer} conversations enchaînées (salut, puis vraie question)")
     n_rep = sum(sum(1 for c in cib if c != IGNORE) for _, cib in train)
     print(f"{len(train):,} conversations d'entraînement ({n_rep:,} tokens de réponse), {len(val)} de validation")
 
