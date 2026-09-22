@@ -96,6 +96,27 @@ seule par défaut (`--memoire 0`).
         --epochs 2 --out checkpoints/carl
     python chat.py --checkpoint checkpoints/carl/best.pt
 
+### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
+
+Le même Carl (nom, créateur, intentions) greffé sur Gemma 4 E4B (Google,
+Apache 2.0) par LoRA, sur le Mac avec MLX : 0,09 % des poids entraînés, un
+adaptateur de 28 Mo. Données : 50 conversations d'identité honnêtes pour ce
+cerveau (« créé par Kevin Pacini à partir de Gemma 4 ») et 100 réponses
+générales écrites par Gemma lui-même, pour qu'il ne change que d'identité.
+
+`carl_gemma/examen.py` note l'identité (5 questions jamais vues) et les savoirs
+(10 questions à réponse connue), 2 tirages chacune :
+
+| | identité | savoirs |
+|---|---|---|
+| Gemma 4 d'origine | 0/10 | 19/20 |
+| LoRA fort (lr 1e-4, 16 couches, 400 pas) | 8/10 | 11/20 : oubli, 17 x 23 = 1789 |
+| **LoRA léger (lr 3e-5, 8 couches, 250 pas)** | **9/10** | **20/20** |
+
+    python carl_gemma/identite.py && python carl_gemma/distiller.py --n 100
+    python carl_gemma/entrainer.py && python carl_gemma/examen.py
+    python carl_gemma/chat.py
+
 ## Installation
 
 ```bash

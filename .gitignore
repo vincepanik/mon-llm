@@ -18,3 +18,5 @@ logs/
 wandb/
 *.log
 .pytest_cache/
+carl_gemma/adapters/
+carl_gemma/data/

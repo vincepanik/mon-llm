@@ -30,3 +30,25 @@ def test_debut_de_reponse():
     tok.train(CORPUS, vocab_size=300)
     ids = debut_de_reponse(tok, [{"role": "user", "content": "Bonjour"}])
     assert tok.decode(ids).endswith("<|im_end|>\n<|im_start|>assistant\n")
+
+
+def test_dpo_logp_ne_compte_que_la_reponse():
+    # La log-probabilité d'une réponse ne doit dépendre que de ses tokens, pas
+    # de ceux de la question ni du remplissage.
+    import torch
+
+    from configs.base import Config
+    from dpo import logp_reponses
+    from model import GPT
+
+    torch.manual_seed(0)
+    cfg = Config(n_layer=1, n_head=2, n_embd=16, block_size=32, vocab_size=64)
+    m = GPT(cfg).eval()
+    seq = [5, 6, 7, 8, 9]  # invite = 3 premiers tokens, réponse = 8, 9
+    seul = logp_reponses(m, [(seq, 3)], pad=0, device="cpu")
+    avec_voisin = logp_reponses(m, [(seq, 3), ([1] * 12, 2)], pad=0, device="cpu")
+    assert torch.allclose(seul[0], avec_voisin[0], atol=1e-5)
+    # À la main : log p(8 | 5 6 7) + log p(9 | 5 6 7 8).
+    logits, _ = m(torch.tensor([seq]), torch.tensor([seq]))
+    lp = torch.log_softmax(logits[0], -1)
+    assert torch.allclose(seul[0], lp[2, 8] + lp[3, 9], atol=1e-5)
