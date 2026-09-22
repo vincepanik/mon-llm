@@ -357,13 +357,23 @@ class GPT(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0, top_k: int | None = None) -> torch.Tensor:
+    def generate(
+        self,
+        idx: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: int | None = None,
+        stop_token: int | None = None,
+    ) -> torch.Tensor:
         """
         Complète `idx` token par token. Chaque token tiré est réinjecté en entrée.
 
         temperature : < 1 rend le modèle prudent et répétitif, > 1 le rend audacieux.
         top_k : ne tire que parmi les k tokens les plus probables, pour éviter
         qu'un token absurde sorte par malchance.
+        stop_token : on s'arrête dès que toutes les séquences l'ont produit (en
+        pratique <|endoftext|> : le modèle signale lui-même que son texte est fini).
+        Le token d'arrêt reste dans la sortie, à l'appelant de le retirer.
         """
         was_training = self.training
         self.eval()
@@ -379,6 +389,8 @@ class GPT(nn.Module):
             probs = F.softmax(logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1)
             idx = torch.cat((idx, idx_next), dim=1)
+            if stop_token is not None and bool((idx_next == stop_token).all()):
+                break
         if was_training:
             self.train()
         return idx

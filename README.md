@@ -21,7 +21,7 @@ changer une ligne. Seul le fichier de config change.
 | 1 | Tokenizer BPE écrit à la main | `tokenizer/bpe.py` | fait |
 | 2 | Transformer minimal, niveau caractère, ~1M params | `model.py` | fait |
 | 4 | Modernisation mesurée : RoPE, RMSNorm, SwiGLU, GQA | `model.py` | fait |
-| 3 | From scratch ~125M sur corpus français | `configs/run_150m.py` | à faire |
+| 3 | From scratch ~125M sur corpus français | `configs/run_150m.py` | fait |
 | 5 | Post-training : SFT puis DPO | à créer | à faire |
 
 L'étape 4 est passée avant la 3 : on ne paye le GPU qu'une fois, autant que ce
@@ -45,6 +45,24 @@ Loss de validation à la fin :
 Le bruit entre deux graines est de l'ordre de 0,01 : RoPE et SwiGLU sont des
 gains nets, GQA un léger coût assumé, RMSNorm neutre. Les configs de debug et
 du vrai run utilisent les quatre.
+
+### Étape 3, le premier vrai run
+
+| | |
+|---|---|
+| Modèle | 125,3M paramètres, 16 x 768, 12 têtes / 4 kv, RoPE, RMSNorm, SwiGLU |
+| Données | 4,82 milliards de tokens (FineWeb2-HQ 60 %, Wikipédia 25 %, science 15 %), tokenizer BPE 32k |
+| Entraînement | 20 000 étapes de 524 288 tokens = 10,5 milliards de tokens (~2,2 passages) |
+| Machine | 1 x RTX 5090, RunPod Secure Cloud EU-RO-1, 0,99 $/h |
+| Vitesse | 178 000 tokens/s, 2,94 s par étape |
+| Durée, coût | 16 h 20, ~17,60 $ tout compris (installation, envoi du corpus, test) |
+| Validation | 4,16 (étape 500), 3,37 (1 000), 2,54 (14 500), **2,51 (19 000, `best.pt`)**, 2,54 (20 000) |
+
+Ce qu'il sait faire : continuer un texte dans un français correct et fluide, en
+tenant le sujet et le registre sur un paragraphe (une recette a des
+intertitres, un article scientifique un ton encyclopédique). Ce qu'il ne sait
+pas : dire des choses vraies (il invente dates, chiffres et mécanismes avec
+aplomb), tenir un fil au-delà de quelques phrases, répondre à une question.
 
 ## Installation
 
@@ -72,8 +90,8 @@ python data/prepare.py --config configs/debug_mac.py
 # Entraîner
 python train.py --config configs/debug_mac.py
 
-# Générer du texte depuis un checkpoint
-python sample.py --checkpoint checkpoints/debug/latest.pt --prompt "Il était une fois"
+# Générer du texte depuis un checkpoint (s'arrête seul à la fin du texte)
+python sample.py --checkpoint checkpoints/run_150m/best.pt --prompt "Il était une fois"
 
 # Tests
 pytest

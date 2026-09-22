@@ -98,3 +98,16 @@ def test_checkpoint_de_modele_compile(tmp_path):
     neuf.load_state_dict(ck["model"])  # planterait si le préfixe restait
     x = torch.randint(0, cfg.vocab_size, (1, 8))
     assert torch.equal(neuf(x)[0], model(x)[0])
+
+
+def test_generate_s_arrete_au_token_de_fin(model):
+    # Avec top_k=1 la génération est déterministe : on prend comme token
+    # d'arrêt celui que le modèle va choisir en premier. Il doit alors s'arrêter
+    # tout de suite au lieu d'aller jusqu'à max_new_tokens.
+    model.eval()
+    x = torch.ones(1, 3, dtype=torch.long)
+    premier = model(x)[0][0, -1].argmax().item()
+    out = model.generate(x, max_new_tokens=20, top_k=1, stop_token=premier)
+    assert out.shape == (1, 4) and out[0, -1].item() == premier
+    # Sans token d'arrêt, il va jusqu'au bout.
+    assert model.generate(x, max_new_tokens=20, top_k=1).shape == (1, 23)
