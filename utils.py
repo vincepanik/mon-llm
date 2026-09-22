@@ -99,7 +99,14 @@ def save_checkpoint(path: Path, model, optimizer, step: int, cfg: Config, best_v
 
 
 def load_checkpoint(path: Path, device: torch.device) -> dict:
-    return torch.load(path, map_location=device, weights_only=False)
+    ck = torch.load(path, map_location=device, weights_only=False)
+    # Un modèle passé par torch.compile sauvegarde ses poids sous des noms
+    # préfixés par "_orig_mod." : on les retire, pour pouvoir recharger le
+    # checkpoint dans un modèle non compilé (sample.py, reprise avant compile).
+    prefixe = "_orig_mod."
+    if any(k.startswith(prefixe) for k in ck["model"]):
+        ck["model"] = {k.removeprefix(prefixe): v for k, v in ck["model"].items()}
+    return ck
 
 
 def count_params(model) -> int:

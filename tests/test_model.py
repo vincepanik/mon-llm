@@ -77,3 +77,24 @@ def test_gqa_et_rope_reduisent_les_parametres():
     assert n(pos="rope") < n()          # plus de table de positions
     assert n(n_kv_head=1) < n()         # k et v plus petits
     assert n(norm="rmsnorm") == n()     # un gain par canal dans les deux cas (bias=False)
+
+
+def test_checkpoint_de_modele_compile(tmp_path):
+    # Les poids d'un modèle compilé portent le préfixe "_orig_mod." : le
+    # chargement doit le retirer pour les remettre dans un modèle normal.
+    from utils import load_checkpoint, save_checkpoint
+
+    torch.manual_seed(0)
+    cfg = Config(**MODERNE)
+    model = GPT(cfg)
+    opt = model.configure_optimizer(cfg, torch.device("cpu"))
+    compile_ = torch.compile(model)  # rien n'est exécuté, seul l'emballage compte
+    p = tmp_path / "ck.pt"
+    save_checkpoint(p, compile_, opt, step=3, cfg=cfg, best_val=1.0)
+    assert any(k.startswith("_orig_mod.") for k in torch.load(p, weights_only=False)["model"])
+
+    ck = load_checkpoint(p, torch.device("cpu"))
+    neuf = GPT(cfg)
+    neuf.load_state_dict(ck["model"])  # planterait si le préfixe restait
+    x = torch.randint(0, cfg.vocab_size, (1, 8))
+    assert torch.equal(neuf(x)[0], model(x)[0])
