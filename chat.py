@@ -56,7 +56,11 @@ def main() -> None:
 
     messages: list[dict] = []
     while True:
-        question = input("\nvous > ").strip()
+        try:
+            question = input("\nvous > ").strip()
+        except (EOFError, KeyboardInterrupt):  # Ctrl+D, Ctrl+C, ou pas de clavier du tout
+            print()
+            break
         if not question:
             break
         messages.append({"role": "user", "content": question})
