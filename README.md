@@ -22,7 +22,7 @@ changer une ligne. Seul le fichier de config change.
 | 2 | Transformer minimal, niveau caractère, ~1M params | `model.py` | fait |
 | 4 | Modernisation mesurée : RoPE, RMSNorm, SwiGLU, GQA | `model.py` | fait |
 | 3 | From scratch ~125M sur corpus français | `configs/run_150m.py` | fait |
-| 5 | Post-training : SFT puis DPO | à créer | à faire |
+| 5 | Post-training : SFT puis DPO | `sft.py`, `chat.py` | SFT fait, DPO à faire |
 
 L'étape 4 est passée avant la 3 : on ne paye le GPU qu'une fois, autant que ce
 soit avec l'architecture finale.
@@ -64,6 +64,19 @@ intertitres, un article scientifique un ton encyclopédique). Ce qu'il ne sait
 pas : dire des choses vraies (il invente dates, chiffres et mécanismes avec
 aplomb), tenir un fil au-delà de quelques phrases, répondre à une question.
 
+### Étape 5, le SFT
+
+1 490 conversations françaises écrites par des humains (OpenAssistant oasst2 et
+Aya, Apache 2.0), format ChatML, loss sur les réponses seulement. 3 epochs sur
+le Mac en 25 min, gratuit. Loss de validation des réponses : 2,56 avant,
+**2,25 après la 1re epoch** (`checkpoints/sft/best.pt`), puis 2,27 et 2,32 :
+avec si peu d'exemples, le modèle commence à les apprendre par cœur dès la
+2e epoch.
+
+Le modèle répond au lieu de continuer le texte et s'arrête seul
+(« La capitale de l'Italie est Rome. »). Le fond reste celui d'un 125M : hors
+des questions les plus simples, il répond à côté ou invente.
+
 ## Installation
 
 ```bash
@@ -92,6 +105,11 @@ python train.py --config configs/debug_mac.py
 
 # Générer du texte depuis un checkpoint (s'arrête seul à la fin du texte)
 python sample.py --checkpoint checkpoints/run_150m/best.pt --prompt "Il était une fois"
+
+# Étape 5 : SFT puis discussion
+python data/download_sft.py
+python sft.py --checkpoint checkpoints/run_150m/best.pt
+python chat.py --checkpoint checkpoints/sft/best.pt
 
 # Tests
 pytest

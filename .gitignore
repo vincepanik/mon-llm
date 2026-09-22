@@ -9,6 +9,7 @@ data/*.bin
 data/*.txt
 data/raw/
 data/big/
+data/sft/
 checkpoints/*
 !checkpoints/.gitkeep
 
