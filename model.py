@@ -364,6 +364,7 @@ class GPT(nn.Module):
         temperature: float = 1.0,
         top_k: int | None = None,
         stop_token: int | None = None,
+        repetition_penalty: float = 1.0,
     ) -> torch.Tensor:
         """
         Complète `idx` token par token. Chaque token tiré est réinjecté en entrée.
@@ -374,14 +375,26 @@ class GPT(nn.Module):
         stop_token : on s'arrête dès que toutes les séquences l'ont produit (en
         pratique <|endoftext|> : le modèle signale lui-même que son texte est fini).
         Le token d'arrêt reste dans la sortie, à l'appelant de le retirer.
+        repetition_penalty : > 1 rend moins probables les tokens déjà écrits
+        pendant cette génération (pas ceux de la question : répondre « la
+        capitale de l'Italie est Rome » doit rester possible). Contre les
+        boucles « la compréhension et la compréhension ».
         """
         was_training = self.training
         self.eval()
+        debut = idx.size(1)
         for _ in range(max_new_tokens):
             # Le modèle ne voit que block_size tokens : on garde la fin.
             idx_cond = idx[:, -self.cfg.block_size :]
             logits, _ = self(idx_cond)
-            logits = logits[:, -1, :] / max(temperature, 1e-8)
+            logits = logits[:, -1, :]
+            if repetition_penalty != 1.0 and idx.size(1) > debut:
+                deja = idx[:, debut:]
+                vus = logits.gather(1, deja)
+                # Divisé si positif, multiplié si négatif : dans les deux cas, moins probable.
+                vus = torch.where(vus > 0, vus / repetition_penalty, vus * repetition_penalty)
+                logits = logits.scatter(1, deja, vus)
+            logits = logits / max(temperature, 1e-8)
             if top_k is not None:
                 k = min(top_k, logits.size(-1))
                 seuil = torch.topk(logits, k, dim=-1).values[:, [-1]]

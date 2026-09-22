@@ -89,6 +89,10 @@ def main() -> None:
     parser.add_argument("--grad-accum", type=int, default=8)
     parser.add_argument("--max-len", type=int, default=512,
                         help="tokens par conversation au plus (les plus longues sont coupées)")
+    parser.add_argument("--extra", default=None,
+                        help="conversations en plus (ex. data/identite_carl.json), entraînement seulement")
+    parser.add_argument("--extra-repeat", type=int, default=3,
+                        help="nombre de copies de --extra : peu nombreuses, elles doivent peser")
     parser.add_argument("--val-ratio", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=1337)
     args = parser.parse_args()
@@ -105,17 +109,24 @@ def main() -> None:
     tok = BPETokenizer.load(cfg.tokenizer_path)
     pad = tok.special_tokens["<|pad|>"]
     convs = json.loads(Path(args.data).read_text(encoding="utf-8"))
-    exemples = []
-    for c in convs:
+    extra = json.loads(Path(args.extra).read_text(encoding="utf-8")) if args.extra else []
+
+    def encoder(c):
         ids, cibles = encoder_conversation(tok, c)
         # Trop long pour le contexte : on garde le début (souvent la question
         # et le début de la réponse), du moment qu'il reste une réponse à apprendre.
         n = min(args.max_len, cfg.block_size)
         ids, cibles = ids[:n], cibles[:n]
-        if any(c != IGNORE for c in cibles):
-            exemples.append((ids, cibles))
+        return (ids, cibles) if any(c != IGNORE for c in cibles) else None
+
+    exemples = [e for e in map(encoder, convs) if e is not None]
     n_val = max(1, int(len(exemples) * args.val_ratio))
+    # La validation ne contient que des conversations générales : elle mesure
+    # si le modèle répond mieux, pas s'il a retenu son propre nom.
     val, train = exemples[:n_val], exemples[n_val:]
+    train += [e for e in map(encoder, extra) if e is not None] * args.extra_repeat
+    if extra:
+        print(f"+ {len(extra)} conversations de {args.extra}, x{args.extra_repeat}")
     n_rep = sum(sum(1 for c in cib if c != IGNORE) for _, cib in train)
     print(f"{len(train):,} conversations d'entraînement ({n_rep:,} tokens de réponse), {len(val)} de validation")
 

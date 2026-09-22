@@ -77,6 +77,17 @@ Le modèle répond au lieu de continuer le texte et s'arrête seul
 (« La capitale de l'Italie est Rome. »). Le fond reste celui d'un 125M : hors
 des questions les plus simples, il répond à côté ou invente.
 
+**Carl** (`checkpoints/carl/best.pt`) : même SFT, plus 51 conversations
+d'identité écrites à la main (`data/identite_carl.py`, répétées 3 fois).
+Il salue, se présente, dit avoir été créé par Kevin Pacini et qu'il se trompe
+souvent ; la loss de validation des réponses générales est inchangée (2,25).
+`chat.py` ajoute une pénalité de répétition (1,15) sur les tokens de la
+réponse en cours, contre les boucles.
+
+    python sft.py --checkpoint checkpoints/run_150m/best.pt \
+        --extra data/identite_carl.json --epochs 2 --out checkpoints/carl
+    python chat.py --checkpoint checkpoints/carl/best.pt
+
 ## Installation
 
 ```bash

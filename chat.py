@@ -20,13 +20,15 @@ from tokenizer import BPETokenizer
 from utils import get_device, load_checkpoint
 
 
-def repondre(model, tok, messages, device, temperature: float, top_k: int, max_tokens: int) -> str:
+def repondre(model, tok, messages, device, temperature: float, top_k: int, max_tokens: int,
+             repetition_penalty: float) -> str:
     ids = debut_de_reponse(tok, messages)
     ids = ids[-(model.cfg.block_size - max_tokens):]  # garder de la place pour la réponse
     fin = tok.special_tokens["<|im_end|>"]
     out = model.generate(
         torch.tensor([ids], device=device), max_tokens,
         temperature=temperature, top_k=top_k, stop_token=fin,
+        repetition_penalty=repetition_penalty,
     )[0].tolist()[len(ids):]
     if fin in out:
         out = out[: out.index(fin)]
@@ -40,6 +42,7 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--max-tokens", type=int, default=300)
+    parser.add_argument("--repetition-penalty", type=float, default=1.15)
     args = parser.parse_args()
 
     device = get_device()
@@ -48,7 +51,8 @@ def main() -> None:
     model.load_state_dict(ck["model"])
     model.eval()
     tok = BPETokenizer.load(ck["config"].tokenizer_path)
-    reglages = dict(temperature=args.temperature, top_k=args.top_k, max_tokens=args.max_tokens)
+    reglages = dict(temperature=args.temperature, top_k=args.top_k, max_tokens=args.max_tokens,
+                    repetition_penalty=args.repetition_penalty)
 
     if args.question:
         print(repondre(model, tok, [{"role": "user", "content": args.question}], device, **reglages))

@@ -111,3 +111,12 @@ def test_generate_s_arrete_au_token_de_fin(model):
     assert out.shape == (1, 4) and out[0, -1].item() == premier
     # Sans token d'arrêt, il va jusqu'au bout.
     assert model.generate(x, max_new_tokens=20, top_k=1).shape == (1, 23)
+
+
+def test_penalite_de_repetition(model):
+    # Déterministe (top_k=1) : sans pénalité, un modèle au hasard répète vite
+    # un token ; avec une pénalité énorme, chaque token généré est nouveau.
+    model.eval()
+    x = torch.ones(1, 3, dtype=torch.long)
+    out = model.generate(x, max_new_tokens=12, top_k=1, repetition_penalty=1e6)[0, 3:].tolist()
+    assert len(set(out)) == len(out)
