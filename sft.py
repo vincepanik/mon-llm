@@ -187,10 +187,18 @@ def main() -> None:
             opt.step()
             opt.zero_grad(set_to_none=True)
             pas += 1
+            if device.type == "mps" and pas % 10 == 0:
+                # Les lots ont tous des longueurs différentes : l'allocateur du GPU
+                # garde un bloc de chaque taille « au cas où » et gonfle jusqu'à
+                # 12 Go sur un Mac de 16 Go (tout part en swap). On lui fait rendre
+                # sa réserve régulièrement.
+                torch.mps.empty_cache()
             if pas % 10 == 0:
                 dt = time.time() - depuis
                 print(f"epoch {epoch + 1} | pas {pas:4d}/{total_pas} | loss {loss.item():.4f} | "
-                      f"lr {lr_a(pas):.2e} | {tokens / dt:.0f} tokens/s", flush=True)
+                      f"lr {lr_a(pas):.2e} | {tokens / dt:.0f} tokens/s"
+                      + (f" | GPU {torch.mps.current_allocated_memory() / 2**30:.1f} Go" if device.type == "mps" else ""),
+                      flush=True)
                 tokens, depuis = 0, time.time()
 
         v = evaluer(model, val, args.batch_size, pad, device)

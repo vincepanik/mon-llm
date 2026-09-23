@@ -136,6 +136,8 @@ def main() -> None:
         torch.nn.utils.clip_grad_norm_(politique.parameters(), 1.0)
         opt.step()
         opt.zero_grad(set_to_none=True)
+        if device.type == "mps" and (pas + 1) % 5 == 0:
+            torch.mps.empty_cache()  # même raison que dans sft.py
         if (pas + 1) % 20 == 0 or pas + 1 == total:
             loss_v, acc_v = evaluer()
             print(f"pas {pas + 1:4d}/{total} | val loss {loss_v:.4f} | préfère la bonne {acc_v:.0%} | "
