@@ -32,7 +32,10 @@ import Stemmer
 SOURCE = Path("data/big/raw/wikipedia_fr.txt")
 INDEX = Path("data/big/rag/index")
 SEPARATEUR = "<|endoftext|>"
-LONGUEUR = 900  # caractères de texte par passage, en plus du titre
+# Caractères de texte par passage, en plus du titre : la même taille que dans
+# les exemples de lecture (data/lecture.py). À 900, la capitale du Canada ou la
+# langue du Brésil tombaient souvent juste après la coupure.
+LONGUEUR = 1400
 
 
 def passage(document: str) -> str | None:
@@ -75,27 +78,112 @@ def construire() -> None:
     print(f"index écrit dans {INDEX} en {(time.time() - t0) / 60:.0f} min")
 
 
+# Mots de la question qui ne disent rien de son sujet. Sans eux, « Quelle est
+# la capitale de l'Espagne ? » ramenait l'article « Quel », et « En quelle
+# année... » l'article « Neuf Jours d'une année ».
+INTERROGATIFS = """quel quelle quels quelles qui que quoi quand où comment combien pourquoi lequel laquelle
+    est sont était sera fait font faire a ont y t il elle ils elles on-t-il ce c est-ce année ans an
+    dis dites explique expliquer donne donner connais connaître sais savoir peux pouvez peut
+    moi toi nous vous je tu me te plus grand grande petit petite premier première""".split()
+
+
 @lru_cache(maxsize=1)
 def _moteur():
-    return bm25s.BM25.load(str(INDEX), load_corpus=True, mmap=True), Stemmer.Stemmer("french")
+    moteur = bm25s.BM25.load(str(INDEX), load_corpus=True, mmap=True)
+    mots_vides = sorted(set(bm25s.stopwords.STOPWORDS_FRENCH) | set(INTERROGATIFS))
+    return moteur, Stemmer.Stemmer("french"), mots_vides
+
+
+TITRES = INDEX.parent / "titres.json"
+
+
+def _normaliser(texte: str) -> str:
+    texte = texte.lower().replace("’", "'")
+    texte = re.sub(r"\b(l|d|qu)'", "", texte)
+    return re.sub(r"\s+", " ", texte).strip(" ?!.,")
+
+
+@lru_cache(maxsize=1)
+def _titres() -> dict[str, int]:
+    """Titre normalisé -> numéro du passage. Calculé une fois, puis gardé sur disque."""
+    import json
+
+    if not TITRES.exists():
+        titres: dict[str, int] = {}
+        with (INDEX / "corpus.jsonl").open(encoding="utf-8") as f:
+            for i, ligne in enumerate(f):
+                titre = _normaliser(json.loads(ligne)["text"].split("\n", 1)[0])
+                titres.setdefault(titre, i)
+        TITRES.write_text(json.dumps(titres, ensure_ascii=False), encoding="utf-8")
+    return json.loads(TITRES.read_text(encoding="utf-8"))
+
+
+def _titres_dans(question: str) -> list[tuple[int, int]]:
+    """
+    Articles dont le titre est un groupe de mots de la question : (passage,
+    nombre de mots). Seulement les groupes qui contiennent un nom propre (une
+    majuscule ailleurs qu'en début de phrase) : sinon « capitale », « océan »
+    ou « symphonie », titres d'articles eux aussi, passaient devant « Espagne ».
+    """
+    # Mot par mot, en écartant la ponctuation isolée (« ... Misérables ? ») :
+    # normalisée d'un bloc, la phrase n'avait plus le même nombre de mots et la
+    # recherche par titre abandonnait en silence.
+    originaux = [m for m in question.replace("’", "'").split() if re.search(r"\w", m)]
+    normalises = [_normaliser(m) for m in originaux]
+    propre = [i > 0 and re.sub(r"^(l|d|qu)'", "", m, flags=re.I)[:1].isupper() for i, m in enumerate(originaux)]
+    titres = _titres()
+    trouves = {}
+    for n in range(min(4, len(normalises)), 0, -1):
+        for i in range(len(normalises) - n + 1):
+            if not any(propre[i : i + n]):
+                continue
+            groupe = " ".join(normalises[i : i + n])
+            if groupe in titres:
+                trouves.setdefault(titres[groupe], n)
+    return list(trouves.items())
+
+
+def _jetons(texte: str, stemmer, mots_vides) -> set[str]:
+    t = bm25s.tokenize([texte], stopwords=mots_vides, stemmer=stemmer, show_progress=False, return_ids=False)
+    return set(t[0]) if t and t[0] else set()
 
 
 def disponible() -> bool:
     return INDEX.exists()
 
 
-def chercher(question: str, k: int = 1) -> list[tuple[str, float]]:
-    """Les k passages les plus proches de la question, avec leur score BM25."""
-    moteur, stemmer = _moteur()
-    requete = bm25s.tokenize([question], stopwords="fr", stemmer=stemmer, show_progress=False)
-    if not requete.vocab:  # que des mots vides (« bonjour », « merci »...)
+def chercher(question: str, k: int = 1, candidats: int = 100) -> list[tuple[str, float]]:
+    """
+    Les k passages les plus proches de la question, avec leur score.
+
+    BM25 ramène `candidats` passages, puis on reclasse : un article dont le
+    titre est entièrement dans la question (« Espagne » pour « la capitale de
+    l'Espagne ») est presque toujours le bon, même si son texte, long et
+    général, a un moins bon score BM25 qu'un court article voisin.
+    """
+    moteur, stemmer, mots_vides = _moteur()
+    mots_question = _jetons(question, stemmer, mots_vides)
+    if not mots_question:  # que des mots vides (« bonjour », « merci »...)
         return []
-    resultats, scores = moteur.retrieve(requete, k=k, show_progress=False)
-    sortie = []
-    for doc, score in zip(resultats[0], scores[0]):
-        texte = doc["text"] if isinstance(doc, dict) else str(doc)
-        sortie.append((texte, float(score)))
-    return sortie
+    requete = bm25s.tokenize([question], stopwords=mots_vides, stemmer=stemmer, show_progress=False)
+    ids, scores = moteur.retrieve(requete, k=candidats, show_progress=False, return_as="tuple")
+    # Index chargé avec son corpus : le moteur rend les passages eux-mêmes ({"id", "text"}).
+    base = {int(d["id"]) if isinstance(d, dict) else int(d): float(sc) for d, sc in zip(ids[0], scores[0])}
+    # Titre exact dans la question : candidat d'office, avec un bonus d'autant
+    # plus fort que le titre est long (« Le Petit Prince » > « Prince »).
+    exacts = dict(_titres_dans(question))
+    classes = []
+    for i in set(base) | set(exacts):
+        texte = moteur.corpus[i]["text"]
+        score = base.get(i, min(base.values(), default=0.0))
+        titre = _jetons(texte.split("\n", 1)[0], stemmer, mots_vides)
+        if titre:
+            score += 10.0 * len(titre & mots_question) / len(titre) * (1.0 if titre <= mots_question else 0.5)
+        if i in exacts:
+            score += 8.0 + 3.0 * exacts[i]
+        classes.append((texte, score))
+    classes.sort(key=lambda x: -x[1])
+    return classes[:k]
 
 
 def main() -> None:

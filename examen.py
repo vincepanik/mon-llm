@@ -3,6 +3,7 @@ Examen des Carl de 125M, sur le modèle de carl_gemma/examen.py : les mêmes
 questions pour chaque version, formulations absentes de l'entraînement.
 
     python examen.py checkpoints/carl/best.pt checkpoints/carl_v4/best.pt checkpoints/carl_dpo/best.pt
+    python examen.py checkpoints/carl_v6/best.pt --wikipedia   # avec la recherche (rag.py)
 
 Réponses déterministes (le mot le plus probable), pour que deux passages
 donnent le même résultat et qu'un écart mesure le modèle, pas le hasard.
@@ -109,10 +110,11 @@ VOLETS = {
 
 
 def main() -> None:
-    chemins = sys.argv[1:] or ["checkpoints/carl_v4/best.pt"]
+    wikipedia = "--wikipedia" in sys.argv
+    chemins = [a for a in sys.argv[1:] if not a.startswith("--")] or ["checkpoints/carl_v4/best.pt"]
     device = get_device()
     tok = BPETokenizer.load("tokenizer/vocab.json")
-    reglages = dict(temperature=0.0, top_k=1, max_tokens=80, repetition_penalty=1.15)
+    reglages = dict(temperature=0.0, top_k=1, max_tokens=80, repetition_penalty=1.15, wikipedia=wikipedia)
     resultats = {}
     for chemin in chemins:
         ck = load_checkpoint(chemin, device)

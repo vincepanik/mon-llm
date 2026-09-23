@@ -27,7 +27,47 @@ from tokenizer import BPETokenizer
 from utils import get_device, load_checkpoint
 
 
+def avec_document(messages: list[dict]) -> list[dict]:
+    """
+    Cherche dans Wikipédia (rag.py) le passage le plus proche de la dernière
+    question et le place juste avant elle, comme dans les exemples de lecture
+    de l'entraînement (data/lecture.py). Carl y puise la réponse s'il la trouve,
+    et l'ignore sinon. Sans index, les messages passent tels quels.
+    """
+    import rag
+
+    if not rag.disponible() or not messages or messages[-1]["role"] != "user":
+        return messages
+    trouves = rag.chercher(messages[-1]["content"], k=1)
+    if not trouves:
+        return messages
+    return messages[:-1] + [{"role": "document", "content": trouves[0][0]}, messages[-1]]
+
+
+# Réponses apprises pour « le passage ne contient pas la réponse » (data/lecture.py).
+PAS_DANS_LE_DOCUMENT = ("ne le dit pas", "ne trouve pas cette information", "ne répond pas à cette question")
+
+
 def repondre(model, tok, messages, device, temperature: float, top_k: int, max_tokens: int,
+             repetition_penalty: float, avec_outils: bool = True, wikipedia: bool = False) -> str:
+    """
+    Avec wikipedia=True : on lui donne d'abord le passage trouvé ; s'il répond
+    que le passage ne contient pas la réponse, on repose la question sans
+    document, et il répond de mémoire. La lecture quand elle aide, la mémoire
+    quand la recherche a ramené un passage à côté.
+    """
+    reglages = dict(temperature=temperature, top_k=top_k, max_tokens=max_tokens,
+                    repetition_penalty=repetition_penalty, avec_outils=avec_outils)
+    if wikipedia:
+        documentee = avec_document(messages)
+        if documentee is not messages:
+            r = _generer(model, tok, documentee, device, **reglages)
+            if not any(m in r.lower() for m in PAS_DANS_LE_DOCUMENT):
+                return r
+    return _generer(model, tok, messages, device, **reglages)
+
+
+def _generer(model, tok, messages, device, temperature: float, top_k: int, max_tokens: int,
              repetition_penalty: float, avec_outils: bool = True) -> str:
     """
     Génère la réponse token par token, pour pouvoir intervenir en cours de route :
@@ -71,6 +111,8 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--max-tokens", type=int, default=300)
     parser.add_argument("--repetition-penalty", type=float, default=1.15)
+    parser.add_argument("--sans-wikipedia", action="store_true",
+                        help="ne pas chercher dans Wikipédia avant de répondre (rag.py)")
     parser.add_argument("--memoire", type=int, default=0,
                         help="échanges précédents montrés au modèle (0 : chaque question seule)")
     args = parser.parse_args()
@@ -82,7 +124,7 @@ def main() -> None:
     model.eval()
     tok = BPETokenizer.load(ck["config"].tokenizer_path)
     reglages = dict(temperature=args.temperature, top_k=args.top_k, max_tokens=args.max_tokens,
-                    repetition_penalty=args.repetition_penalty)
+                    repetition_penalty=args.repetition_penalty, wikipedia=not args.sans_wikipedia)
 
     if args.question:
         print(repondre(model, tok, [{"role": "user", "content": args.question}], device, **reglages))
