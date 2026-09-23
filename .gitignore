@@ -23,3 +23,7 @@ carl_gemma/data/
 
 # Conversations avec Carl : personnelles
 conversations/
+
+# Conversations écrites par Claude pour le SFT de Carl : gardées en local
+# (dépôt public ; voir data/claude/assembler.py)
+data/claude/lot_*.txt

@@ -52,9 +52,15 @@ QUESTIONS = [
     "Calcule {a} {mot} {b}.", "Quel est le résultat de {a} {mot} {b} ?", "Peux-tu calculer {a} {mot} {b} ?",
     "Ça fait combien {a} {mot} {b} ?", "{a} {mot} {b} = ?", "Dis-moi combien font {a} {mot} {b}.",
 ]
+# Peu nombreux et aux unités variées : quand 20 % des exemples étaient des
+# problèmes (surtout en euros), Carl finissait « 17 × 23 = 391 euros ».
 PROBLEMES = [
     ("J'ai {a} euros et je dépense {b} euros. Combien me reste-t-il ?", "{a}-{b}",
      "Il te reste {a} - {b} = {r} euros."),
+    ("Une classe a {a} élèves et {b} sont absents. Combien sont présents ?", "{a}-{b}",
+     "{a} - {b} = {r} élèves sont présents."),
+    ("Un train parcourt {a} km par heure. Quelle distance fait-il en {b} heures ?", "{a}*{b}",
+     "En {b} heures, il parcourt {a} × {b} = {r} km."),
     ("Un paquet contient {a} biscuits. Combien y a-t-il de biscuits dans {b} paquets ?", "{a}*{b}",
      "Il y a {a} × {b} = {r} biscuits."),
     ("{b} personnes se partagent {a} euros à parts égales. Combien chacune reçoit-elle ?", "{a}/{b}",
@@ -70,7 +76,7 @@ def conversations(n: int = 1500) -> list[list[dict]]:
     convs = []
     for _ in range(n):
         tirage = R.random()
-        if tirage < 0.6:
+        if tirage < 0.72:
             symbole, mots, signe = R.choice(OPS)
             a, b = nombre(), nombre()
             if symbole == "-" and R.random() < 0.7:
@@ -79,11 +85,11 @@ def conversations(n: int = 1500) -> list[list[dict]]:
                 a = a * b  # divisions qui tombent juste, souvent
             q = R.choice(QUESTIONS).format(a=fr(a), mot=R.choice(mots), b=fr(b))
             rep = f"{fr(a)} {signe} {fr(b)} = {outil(f'{a}{symbole}{b}')}."
-        elif tirage < 0.72:
+        elif tirage < 0.83:
             p, n_ = R.choice([5, 10, 15, 20, 25, 30, 50, 75, R.randint(1, 99)]), R.randint(10, 5000)
             q = R.choice(["Combien font {p} % de {n} ?", "Calcule {p} % de {n}.", "C'est combien {p}% de {n} ?"]).format(p=p, n=n_)
             rep = f"{p} % de {n_} = {outil(f'{n_}*{p}/100')}."
-        elif tirage < 0.8:
+        elif tirage < 0.92:
             a = R.randint(2, 99)
             q = R.choice(["Combien fait {a} au carré ?", "{a} au carré ?", "Calcule le carré de {a}."]).format(a=a)
             rep = f"{a} au carré, c'est {a} × {a} = {outil(f'{a}*{a}')}."
