@@ -163,7 +163,10 @@ def main() -> None:
     meilleure = evaluer(model, val, args.batch_size, pad, device)
     print(f"avant SFT : val {meilleure:.4f}  ({total_pas} pas sur {args.epochs} epochs)", flush=True)
 
-    pas, t0, tokens = 0, time.time(), 0
+    pas, t0 = 0, time.time()
+    # Mesurée sur le dernier intervalle : sur toute la durée, une pause du
+    # processus (kill -STOP, capot fermé) fausserait durablement le chiffre.
+    tokens, depuis = 0, time.time()
     for epoch in range(args.epochs):
         tous = lots(train, args.batch_size, rng)
         for i in range(0, len(tous), args.grad_accum):
@@ -180,9 +183,10 @@ def main() -> None:
             opt.zero_grad(set_to_none=True)
             pas += 1
             if pas % 10 == 0:
-                dt = time.time() - t0
+                dt = time.time() - depuis
                 print(f"epoch {epoch + 1} | pas {pas:4d}/{total_pas} | loss {loss.item():.4f} | "
                       f"lr {lr_a(pas):.2e} | {tokens / dt:.0f} tokens/s", flush=True)
+                tokens, depuis = 0, time.time()
 
         v = evaluer(model, val, args.batch_size, pad, device)
         print(f"fin de l'epoch {epoch + 1} : val {v:.4f}", flush=True)
