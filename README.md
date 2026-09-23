@@ -94,7 +94,42 @@ seule par défaut (`--memoire 0`).
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
         --epochs 2 --out checkpoints/carl
-    python chat.py --checkpoint checkpoints/carl/best.pt
+    python chat.py --checkpoint checkpoints/carl_v4/best.pt
+
+### Niveau 1 : Carl de 125M avec compar:IA, puis DPO
+
+compar:IA (ministère de la Culture, Etalab 2.0), filtré : français, modèles
+ouverts sous licence permissive, conversations qui tiennent en 512 tokens,
+sans assistant qui se présente comme un autre modèle (sinon Carl répondait
+« Je suis Qwen »). SFT sur 29 639 conversations (2 epochs, ~2 h 40 de calcul
+sur le Mac), réparation d'identité (identité x10, 12 min) -> `carl_v4`, puis
+DPO sur 1 064 paires de votes -> `carl_dpo` (14 min).
+
+`examen.py`, 12 réponses par volet (4 questions x 3 tirages, formulations
+absentes de l'entraînement) ; un écart de 1 ou 2 points est du bruit :
+
+| | identité | savoirs | conduite |
+|---|---|---|---|
+| Carl v2 (1 500 conversations) | 5/12 | 10/12 | 6/12 |
+| **Carl v4** (compar:IA + réparation) | 6/12 | 7/12 | **11/12** |
+| Carl DPO | 5/12 | 8/12 | 10/12 |
+
+compar:IA a appris à Carl à se conduire en assistant (il ne s'invente plus
+l'heure ni la météo), au prix d'un peu de ses rares faits : il imite la forme
+d'une réponse assurée (« La capitale de l'Espagne est **Paris** »). Le DPO, avec
+1 064 paires de réponses de gros modèles, préfère la réponse choisie 59 % du
+temps sur des paires inédites, sans effet mesurable à l'examen. À 125M, on
+échange de la forme contre du fond : c'est le plafond de cette taille.
+
+    python data/download_comparia.py
+    python sft.py --checkpoint checkpoints/run_150m/best.pt \
+        --data data/sft/comparia.json data/sft/conversations.json \
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 2 --out checkpoints/carl_v3
+    python sft.py --checkpoint checkpoints/carl_v3/best.pt \
+        --data data/sft/comparia_reparation.json data/sft/conversations.json \
+        --extra data/identite_carl.json --extra-repeat 10 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v4
+    python dpo.py --checkpoint checkpoints/carl_v4/best.pt --out checkpoints/carl_dpo
+    python examen.py checkpoints/carl/best.pt checkpoints/carl_v4/best.pt checkpoints/carl_dpo/best.pt
 
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 

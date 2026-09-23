@@ -325,10 +325,12 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None):
+    def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None, toutes_positions: bool = False):
         """
         idx : (batch, temps) identifiants de tokens
         targets : (batch, temps) tokens suivants, ou None en génération
+        toutes_positions : sans targets, rendre les logits de toutes les
+          positions (et pas seulement de la dernière), par exemple pour le DPO.
         Renvoie (logits, loss). loss vaut None si targets est None.
         """
         B, T = idx.shape
@@ -345,6 +347,8 @@ class GPT(nn.Module):
             x = block(x)
         x = self.ln_f(x)
 
+        if targets is None and toutes_positions:
+            return self.lm_head(x), None
         if targets is None:
             # En génération, seule la dernière position sert. Calculer les logits
             # des autres serait du travail jeté.

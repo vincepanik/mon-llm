@@ -57,7 +57,7 @@ def logp_reponses(model, sequences: list[tuple[list[int], int]], pad: int, devic
         x[i, : len(s)] = torch.tensor(s)
         masque[i, debut - 1 : len(s) - 1] = True  # position t prédit le token t+1
     x, masque = x.to(device), masque.to(device)
-    logits, _ = model(x, x)  # des cibles quelconques : on veut juste tous les logits
+    logits, _ = model(x, toutes_positions=True)
     logp = F.log_softmax(logits.float(), dim=-1)
     suivants = torch.cat([x[:, 1:], x[:, -1:]], dim=1)
     par_token = logp.gather(-1, suivants.unsqueeze(-1)).squeeze(-1)
@@ -108,7 +108,12 @@ def main() -> None:
     @torch.no_grad()
     def evaluer():
         politique.eval()
-        m = torch.cat([marges(politique, val[i : i + args.lot]) for i in range(0, len(val), args.lot)])
+        morceaux = []
+        for i in range(0, len(val), args.lot):
+            morceaux.append(marges(politique, val[i : i + args.lot]))
+            if device.type == "mps":
+                torch.mps.empty_cache()
+        m = torch.cat(morceaux)
         politique.train()
         # Précision : part des paires où le modèle préfère désormais la bonne réponse.
         return float((-F.logsigmoid(args.beta * m)).mean()), float((m > 0).float().mean())
@@ -133,11 +138,14 @@ def main() -> None:
                 break
             loss = (-F.logsigmoid(args.beta * marges(politique, lot))).mean()
             (loss / accum).backward()
+            if device.type == "mps":
+                # Après chaque série et pas seulement tous les quelques pas : les
+                # logits de 4 réponses x 32 000 tokens, de longueurs toujours
+                # différentes, faisaient monter le processus à 15 Go.
+                torch.mps.empty_cache()
         torch.nn.utils.clip_grad_norm_(politique.parameters(), 1.0)
         opt.step()
         opt.zero_grad(set_to_none=True)
-        if device.type == "mps" and (pas + 1) % 5 == 0:
-            torch.mps.empty_cache()  # même raison que dans sft.py
         if (pas + 1) % 20 == 0 or pas + 1 == total:
             loss_v, acc_v = evaluer()
             print(f"pas {pas + 1:4d}/{total} | val loss {loss_v:.4f} | préfère la bonne {acc_v:.0%} | "
