@@ -11,6 +11,14 @@ Gemma 4 sait suivre un fil. Entrée vide ou Ctrl+C pour quitter.
 
 from __future__ import annotations
 
+import os
+
+# Tout est en local : Gemma 4 est dans le cache de HuggingFace depuis le premier
+# téléchargement. Sans ceci, mlx-lm tente d'abord de vérifier en ligne s'il
+# existe une version plus récente (et retombe sur le cache si ça échoue).
+# HF_HUB_OFFLINE=0 python ... pour autoriser à nouveau le réseau.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 import argparse
 
 from mlx_lm import load, stream_generate
