@@ -20,3 +20,6 @@ wandb/
 .pytest_cache/
 carl_gemma/adapters/
 carl_gemma/data/
+
+# Conversations avec Carl : personnelles
+conversations/

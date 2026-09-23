@@ -4,7 +4,9 @@ Discuter avec le modèle après le SFT.
     python chat.py --checkpoint checkpoints/sft/best.pt
     python chat.py --checkpoint checkpoints/sft/best.pt --question "Qu'est-ce que la photosynthèse ?"
 
-Sans --question : conversation au clavier. Entrée vide pour quitter.
+Sans --question : conversation au clavier. Entrée vide pour quitter. Chaque
+conversation est enregistrée au fil de l'eau dans conversations/, un fichier
+Markdown par session (--sans-journal pour ne rien enregistrer).
 
 Mémoire : Carl ne voit l'échange précédent que pour une relance (« et de la
 France ? », « pourquoi ? »), jamais sinon. Mesuré sur une conversation de 6
@@ -19,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import re
+from datetime import datetime
+from pathlib import Path
 
 import torch
 
@@ -162,6 +166,42 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
     return tok.decode(reponse).strip()
 
 
+MOIS = "janvier février mars avril mai juin juillet août septembre octobre novembre décembre".split()
+
+
+class Journal:
+    """
+    Une conversation = un fichier Markdown dans conversations/, écrit à chaque
+    échange (rien n'est perdu si on quitte avec Ctrl+C). Les appels à la
+    calculatrice y sont affichés comme à l'écran, avec leur détail en italique.
+    """
+
+    def __init__(self, dossier: Path, checkpoint: str, reglages: dict):
+        maintenant = datetime.now()
+        dossier.mkdir(parents=True, exist_ok=True)
+        self.chemin = dossier / maintenant.strftime("%Y-%m-%d_%Hh%M.md")
+        date = f"{maintenant.day} {MOIS[maintenant.month - 1]} {maintenant.year}, {maintenant:%H} h {maintenant:%M}"
+        options = ", ".join(f"{k} {v}" for k, v in reglages.items())
+        self.chemin.write_text(
+            f"# Conversation avec Carl — {date}\n\n"
+            f"*Modèle : `{checkpoint}` — {options}*\n\n---\n\n", encoding="utf-8")
+        self.n = 0
+
+    def ajouter(self, question: str, reponse_brute: str, vu: int) -> None:
+        self.n += 1
+        calculs = [m.group(0) for m in re.finditer(r"\[calc:[^\]]*\]", reponse_brute)]
+        texte = f"**Vous** : {question}\n\n**Carl** : {afficher(reponse_brute).strip()}\n\n"
+        notes = []
+        if vu > 1:
+            notes.append("il voyait l'échange précédent (relance)")
+        if calculs:
+            notes.append("calculatrice : " + ", ".join(f"`{c}`" for c in calculs))
+        if notes:
+            texte += f"*({' ; '.join(notes)})*\n\n"
+        with self.chemin.open("a", encoding="utf-8") as f:
+            f.write(texte)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
@@ -185,6 +225,8 @@ def main() -> None:
     # contient pas la réponse (il y pioche une mauvaise réponse).
     parser.add_argument("--wikipedia", action="store_true",
                         help="chercher dans Wikipédia avant de répondre (rag.py), expérimental")
+    parser.add_argument("--sans-journal", action="store_true",
+                        help="ne pas enregistrer la conversation dans conversations/")
     parser.add_argument("--memoire", type=int, default=None,
                         help="échanges précédents montrés au modèle (par défaut : 1 pour une relance, 0 sinon)")
     args = parser.parse_args()
@@ -203,6 +245,11 @@ def main() -> None:
         print(repondre(model, tok, [{"role": "user", "content": args.question}], device, **reglages))
         return
 
+    journal = None if args.sans_journal else Journal(
+        Path("conversations"), args.checkpoint,
+        {"température": args.temperature, "wikipedia": "oui" if args.wikipedia else "non"})
+    if journal:
+        print(f"(conversation enregistrée dans {journal.chemin})")
     messages: list[dict] = []
     while True:
         try:
@@ -213,9 +260,12 @@ def main() -> None:
         if not question:
             break
         messages.append({"role": "user", "content": question})
-        reponse = repondre(model, tok, a_montrer(messages, args.memoire), device, brut=True, **reglages)
-        print(f"modèle > {afficher(reponse).strip()}")
+        vus = a_montrer(messages, args.memoire)
+        reponse = repondre(model, tok, vus, device, brut=True, **reglages)
+        print(f"carl > {afficher(reponse).strip()}")
         messages.append({"role": "assistant", "content": reponse})
+        if journal:
+            journal.ajouter(question, reponse, len(vus))
 
 
 if __name__ == "__main__":
