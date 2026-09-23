@@ -6,17 +6,19 @@ Discuter avec le modèle après le SFT.
 
 Sans --question : conversation au clavier. Entrée vide pour quitter.
 
-Par défaut, Carl ne voit que la question en cours (--memoire 0). Mesuré sur une
-conversation de 6 questions rejouée 3 fois : sans mémoire, il répond juste aux
-questions d'identité de la fin 6 fois sur 6 ; avec l'échange précédent sous
-les yeux, 2 fois sur 6 seulement. À 125M paramètres, le réflexe de recopier ce
-qui est dans le contexte l'emporte sur le fil de la conversation. --memoire N
-lui montre les N échanges précédents, pour expérimenter.
+Mémoire : Carl ne voit l'échange précédent que pour une relance (« et de la
+France ? », « pourquoi ? »), jamais sinon. Mesuré sur une conversation de 6
+questions rejouée 3 fois : sans mémoire, il répond juste aux questions
+d'identité de la fin 6 fois sur 6 ; avec l'échange précédent sous les yeux,
+2 fois sur 6 seulement. À 125M paramètres, le réflexe de recopier ce qui est
+dans le contexte l'emporte sur le fil de la conversation, sauf quand la
+question n'a aucun sens sans lui. --memoire N impose les N échanges précédents.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 
 import torch
 
@@ -46,31 +48,86 @@ def avec_document(messages: list[dict]) -> list[dict]:
     return messages[:-1] + [{"role": "document", "content": trouves[0][0]}, messages[-1]]
 
 
+# Débuts de phrase qui font d'une question la suite de la précédente.
+RELANCE = re.compile(r"^\s*(et|mais|alors|donc|pourquoi|comment ça|c'est-à-dire|ou|sinon|ok et|d'accord et)\b", re.I)
+POLITESSES = set("merci beaucoup bonjour bonsoir salut coucou hello ok d accord au revoir bonne nuit super génial parfait top".split())
+A_CARL = re.compile(r"\b(tu|te|toi|ton|ta|tes|vous|votre|vos|carl)\b|\bt'|\bt’", re.I)
+
+
+def est_relance(question: str) -> bool:
+    """
+    « et de la France ? » n'a pas de sens seule : il faut lui montrer l'échange
+    précédent. Une question très courte aussi (« pourquoi ? », « en quelle
+    année ? »). Jamais une question qui s'adresse à Carl : c'est là que la
+    mémoire le faisait recopier le fil au lieu de répondre.
+    """
+    if A_CARL.search(question):
+        return False
+    mots = re.findall(r"\w+", question.lower())
+    if mots and all(m in POLITESSES for m in mots):  # « merci », « bonjour », « ok »...
+        return False
+    return bool(RELANCE.match(question)) or len(mots) <= 3
+
+
+def a_montrer(messages: list[dict], memoire: int | None) -> list[dict]:
+    """Ce que Carl voit de la conversation : la question, plus l'échange d'avant pour une relance."""
+    if memoire is None:
+        memoire = 1 if len(messages) >= 3 and est_relance(messages[-1]["content"]) else 0
+    return messages[-(2 * memoire + 1):]
+
+
+def trigrammes_interdits(reponse: list[int], n: int = 3) -> list[int]:
+    """
+    Les tokens qui compléteraient une suite de n tokens déjà écrite dans la
+    réponse. Contre les boucles (« "p" après "p" » répété vingt fois), que la
+    pénalité de répétition, trop douce, laissait passer.
+    """
+    if n <= 0 or len(reponse) < n - 1:
+        return []
+    fin = tuple(reponse[-(n - 1):])
+    return sorted({reponse[i + n - 1] for i in range(len(reponse) - n + 1) if tuple(reponse[i : i + n - 1]) == fin})
+
+
+def dans_un_calcul(fin_de_reponse: str) -> bool:
+    """Carl est-il en train d'écrire « [calc: ... », pas encore refermé ?"""
+    return fin_de_reponse.rfind("[calc:") > fin_de_reponse.rfind("]")
+
+
 # Réponses apprises pour « le passage ne contient pas la réponse » (data/lecture.py).
 PAS_DANS_LE_DOCUMENT = ("ne le dit pas", "ne trouve pas cette information", "ne répond pas à cette question")
 
 
 def repondre(model, tok, messages, device, temperature: float, top_k: int, max_tokens: int,
-             repetition_penalty: float, avec_outils: bool = True, wikipedia: bool = False) -> str:
+             repetition_penalty: float, avec_outils: bool = True, wikipedia: bool = False,
+             sans_repetition: int = 3, brut: bool = False) -> str:
     """
     Avec wikipedia=True : on lui donne d'abord le passage trouvé ; s'il répond
     que le passage ne contient pas la réponse, on repose la question sans
     document, et il répond de mémoire. La lecture quand elle aide, la mémoire
     quand la recherche a ramené un passage à côté.
+
+    brut=True garde les appels à la calculatrice (« [calc: 12*12 = 144] ») :
+    c'est la version à remettre dans l'historique. Sinon, à la question
+    suivante, Carl voit « 12 × 12 = 144 », imite une réponse sans calculatrice
+    et invente (« 13 × 13 = 156 »).
     """
     reglages = dict(temperature=temperature, top_k=top_k, max_tokens=max_tokens,
-                    repetition_penalty=repetition_penalty, avec_outils=avec_outils)
+                    repetition_penalty=repetition_penalty, avec_outils=avec_outils,
+                    sans_repetition=sans_repetition)
+    r = None
     if wikipedia:
         documentee = avec_document(messages)
         if documentee is not messages:
             r = _generer(model, tok, documentee, device, **reglages)
-            if not any(m in r.lower() for m in PAS_DANS_LE_DOCUMENT):
-                return r
-    return _generer(model, tok, messages, device, **reglages)
+            if any(m in r.lower() for m in PAS_DANS_LE_DOCUMENT):
+                r = None
+    if r is None:
+        r = _generer(model, tok, messages, device, **reglages)
+    return r if brut else afficher(r).strip()
 
 
 def _generer(model, tok, messages, device, temperature: float, top_k: int, max_tokens: int,
-             repetition_penalty: float, avec_outils: bool = True) -> str:
+             repetition_penalty: float, avec_outils: bool = True, sans_repetition: int = 3) -> str:
     """
     Génère la réponse token par token, pour pouvoir intervenir en cours de route :
     dès que Carl écrit « [calc: <expression> = », la calculatrice (outils.py)
@@ -90,6 +147,10 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
             contexte, 1,
             temperature=max(temperature, 1e-5), top_k=1 if temperature <= 0 else top_k,
             repetition_penalty=repetition_penalty, penaliser_aussi=precedentes + reponse,
+            # Pas pendant un appel à la calculatrice : il y recopie volontairement
+            # l'opération (« 4827 + 3196 = [calc: 4827+3196 = »), et bloquer ce
+            # second « = » l'empêchait d'appeler l'outil (il inventait 51469).
+            interdits=[] if dans_un_calcul(tok.decode(reponse[-40:])) else trigrammes_interdits(reponse, sans_repetition),
         )[0, -1].item()
         if suivant == fin:
             break
@@ -98,7 +159,7 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
             appel = APPEL.search(tok.decode(reponse[-40:]))
             if appel:
                 reponse += tok.encode(f" {calculer(appel.group(1))}]")
-    return afficher(tok.decode(reponse)).strip()
+    return tok.decode(reponse).strip()
 
 
 def main() -> None:
@@ -111,7 +172,12 @@ def main() -> None:
     # pour des textes créatifs (poème, histoire).
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-k", type=int, default=50)
-    parser.add_argument("--max-tokens", type=int, default=300)
+    # Quand il ne sait pas, il s'étale (des listes entières sur « la France » en
+    # général) : couper plus tôt limite les dérives. Ses bonnes réponses tiennent
+    # presque toujours en quelques phrases.
+    parser.add_argument("--max-tokens", type=int, default=150)
+    parser.add_argument("--sans-repetition", type=int, default=3,
+                        help="interdire de répéter une suite de N tokens dans la réponse (0 : désactivé)")
     parser.add_argument("--repetition-penalty", type=float, default=1.15)
     # Désactivée par défaut : mesuré sur 40 faits, Carl v6 en retrouve 25 de
     # mémoire et 21 avec la recherche. Elle ne ramène le bon passage qu'une fois
@@ -119,8 +185,8 @@ def main() -> None:
     # contient pas la réponse (il y pioche une mauvaise réponse).
     parser.add_argument("--wikipedia", action="store_true",
                         help="chercher dans Wikipédia avant de répondre (rag.py), expérimental")
-    parser.add_argument("--memoire", type=int, default=0,
-                        help="échanges précédents montrés au modèle (0 : chaque question seule)")
+    parser.add_argument("--memoire", type=int, default=None,
+                        help="échanges précédents montrés au modèle (par défaut : 1 pour une relance, 0 sinon)")
     args = parser.parse_args()
 
     device = get_device()
@@ -130,7 +196,8 @@ def main() -> None:
     model.eval()
     tok = BPETokenizer.load(ck["config"].tokenizer_path)
     reglages = dict(temperature=args.temperature, top_k=args.top_k, max_tokens=args.max_tokens,
-                    repetition_penalty=args.repetition_penalty, wikipedia=args.wikipedia)
+                    repetition_penalty=args.repetition_penalty, wikipedia=args.wikipedia,
+                    sans_repetition=args.sans_repetition)
 
     if args.question:
         print(repondre(model, tok, [{"role": "user", "content": args.question}], device, **reglages))
@@ -146,9 +213,8 @@ def main() -> None:
         if not question:
             break
         messages.append({"role": "user", "content": question})
-        vus = messages[-(2 * args.memoire + 1):]  # la question, et les N échanges d'avant
-        reponse = repondre(model, tok, vus, device, **reglages)
-        print(f"modèle > {reponse}")
+        reponse = repondre(model, tok, a_montrer(messages, args.memoire), device, brut=True, **reglages)
+        print(f"modèle > {afficher(reponse).strip()}")
         messages.append({"role": "assistant", "content": reponse})
 
 

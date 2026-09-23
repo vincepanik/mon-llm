@@ -370,6 +370,7 @@ class GPT(nn.Module):
         stop_token: int | None = None,
         repetition_penalty: float = 1.0,
         penaliser_aussi: list[int] | None = None,
+        interdits: list[int] | None = None,
     ) -> torch.Tensor:
         """
         Complète `idx` token par token. Chaque token tiré est réinjecté en entrée.
@@ -386,6 +387,8 @@ class GPT(nn.Module):
         boucles « la compréhension et la compréhension ».
         penaliser_aussi : tokens à pénaliser en plus, par exemple ceux des
         réponses précédentes de l'assistant, pour qu'il ne les recopie pas.
+        interdits : tokens exclus d'office au prochain pas (voir chat.py, qui
+        s'en sert pour interdire de répéter une suite de 3 tokens).
         """
         was_training = self.training
         self.eval()
@@ -406,6 +409,8 @@ class GPT(nn.Module):
                 # Divisé si positif, multiplié si négatif : dans les deux cas, moins probable.
                 vus = torch.where(vus > 0, vus / repetition_penalty, vus * repetition_penalty)
                 logits = logits.scatter(1, deja, vus)
+            if interdits:
+                logits[:, interdits] = float("-inf")
             logits = logits / max(temperature, 1e-8)
             if top_k is not None:
                 k = min(top_k, logits.size(-1))

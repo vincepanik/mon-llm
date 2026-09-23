@@ -175,6 +175,28 @@ fait oublier des faits. La recherche est donc désactivée par défaut
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v6
     python chat.py --checkpoint checkpoints/carl_v6/best.pt
 
+### Génération de Carl : relances, boucles, longueur
+
+Trois réglages de `chat.py`, sans réentraînement, mesurés sur Carl v6 :
+
+| | avant | après |
+|---|---|---|
+| relances justes (« et de la France ? », 6 cas) | 1/6 | 4/6 |
+| réponses qui tournent en boucle (8 questions) | 4/8 | 0/8 |
+| longueur moyenne | 720 caractères | 476 |
+
+- pas de répétition d'une suite de 3 tokens dans la réponse (suspendu pendant
+  un appel à la calculatrice, où Carl recopie volontairement l'opération) ;
+- l'échange précédent n'est montré que pour une relance (commence par « et »,
+  « pourquoi »..., ou 3 mots au plus), jamais pour une question adressée à
+  Carl ; l'historique garde les appels bruts à la calculatrice, sinon Carl
+  imite « 12 × 12 = 144 » et invente la suite ;
+- 150 tokens au plus par réponse au lieu de 300.
+
+L'examen (une question à la fois) est inchangé à la notation près : deux
+réponses fausses dans les deux versions (« l'eau bout à 0 °C... à 100 % »,
+« le trioxyde d'or ») étaient comptées justes par la recherche de sous-chaîne.
+
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 
 Le même Carl (nom, créateur, intentions) greffé sur Gemma 4 E4B (Google,
