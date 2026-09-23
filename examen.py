@@ -4,11 +4,14 @@ questions pour chaque version, formulations absentes de l'entraînement.
 
     python examen.py checkpoints/carl/best.pt checkpoints/carl_v4/best.pt checkpoints/carl_dpo/best.pt
 
-Trois volets, 3 tirages par question :
-  identité : dit-il qu'il est Carl, créé par Kevin Pacini ?
-  savoirs  : faits très simples (un 125M n'en retient pas davantage)
-  conduite : se comporte-t-il en assistant (ne pas inventer l'heure, ne pas
-             se prendre pour un autre modèle) ?
+Réponses déterministes (le mot le plus probable), pour que deux passages
+donnent le même résultat et qu'un écart mesure le modèle, pas le hasard.
+Quatre volets, 74 questions :
+  nom       : 10 façons de demander son nom
+  créateur  : 10 façons de demander qui l'a créé (Kevin Pacini)
+  savoirs   : 40 faits simples (le modèle de base n'en complète que 20)
+  conduite  : 4 situations où un assistant ne doit pas inventer (l'heure, la
+              météo) ni se prendre pour un autre modèle
 """
 
 from __future__ import annotations
@@ -23,55 +26,98 @@ from model import GPT
 from tokenizer import BPETokenizer
 from utils import get_device, load_checkpoint
 
+# (question, début de phrase, mots acceptés) : le début de phrase sert au
+# diagnostic du modèle de base, qui ne sait pas converser.
+FAITS = [
+ ("Quelle est la capitale de l'Espagne ?", "La capitale de l'Espagne est", ["madrid"]),
+ ("Quelle est la capitale de l'Italie ?", "La capitale de l'Italie est", ["rome"]),
+ ("Quelle est la capitale de l'Allemagne ?", "La capitale de l'Allemagne est", ["berlin"]),
+ ("Quelle est la capitale du Japon ?", "La capitale du Japon est", ["tokyo", "tōkyō"]),
+ ("Quelle est la capitale du Portugal ?", "La capitale du Portugal est", ["lisbonne"]),
+ ("Quelle est la capitale de la Belgique ?", "La capitale de la Belgique est", ["bruxelles"]),
+ ("Quelle est la capitale du Royaume-Uni ?", "La capitale du Royaume-Uni est", ["londres"]),
+ ("Quelle est la capitale du Canada ?", "La capitale du Canada est", ["ottawa"]),
+ ("Quelle est la capitale de la Russie ?", "La capitale de la Russie est", ["moscou"]),
+ ("Quelle est la capitale de l'Égypte ?", "La capitale de l'Égypte est", ["caire"]),
+ ("Qui a écrit Les Misérables ?", "Les Misérables est un roman de", ["hugo"]),
+ ("Qui a peint la Joconde ?", "La Joconde a été peinte par", ["vinci", "léonard"]),
+ ("Qui a écrit Le Petit Prince ?", "Le Petit Prince est un livre d'", ["saint-exupéry", "exupéry"]),
+ ("Qui a composé la Cinquième Symphonie ?", "La Cinquième Symphonie a été composée par", ["beethoven"]),
+ ("Qui était le premier empereur des Français ?", "Le premier empereur des Français était", ["napoléon"]),
+ ("En quelle année a eu lieu la Révolution française ?", "La Révolution française a commencé en", ["1789"]),
+ ("En quelle année a commencé la Première Guerre mondiale ?", "La Première Guerre mondiale a commencé en", ["1914"]),
+ ("En quelle année a pris fin la Seconde Guerre mondiale ?", "La Seconde Guerre mondiale s'est terminée en", ["1945"]),
+ ("En quelle année l'homme a-t-il marché sur la Lune ?", "L'homme a marché sur la Lune pour la première fois en", ["1969"]),
+ ("Quel est le plus grand océan du monde ?", "Le plus grand océan du monde est l'océan", ["pacifique"]),
+ ("Quelle est la plus haute montagne du monde ?", "La plus haute montagne du monde est l'", ["everest"]),
+ ("Quel est le plus long fleuve de France ?", "Le plus long fleuve de France est la", ["loire"]),
+ ("Quelle est la planète la plus proche du Soleil ?", "La planète la plus proche du Soleil est", ["mercure"]),
+ ("Quelle est la plus grande planète du système solaire ?", "La plus grande planète du système solaire est", ["jupiter"]),
+ ("Quelle est la planète rouge ?", "La planète rouge est", ["mars"]),
+ ("Quel gaz les plantes absorbent-elles ?", "Les plantes absorbent le dioxyde de", ["carbone"]),
+ ("À quelle température l'eau bout-elle ?", "L'eau bout à une température de", ["100"]),
+ ("Quel est le symbole chimique de l'or ?", "Le symbole chimique de l'or est", ["au"]),
+ ("Combien de pattes a une araignée ?", "Une araignée a", ["huit", "8"]),
+ ("Combien de continents y a-t-il ?", "Le nombre de continents est de", ["cinq", "six", "sept", "5", "6", "7"]),
+ ("Quelle est la monnaie du Japon ?", "La monnaie du Japon est le", ["yen"]),
+ ("Quelle est la monnaie de la France ?", "La monnaie de la France est l'", ["euro"]),
+ ("Quelle langue parle-t-on au Brésil ?", "Au Brésil, la langue officielle est le", ["portugais"]),
+ ("Quelle langue parle-t-on au Mexique ?", "Au Mexique, la langue officielle est l'", ["espagnol"]),
+ ("Dans quel pays se trouve la tour Eiffel ?", "La tour Eiffel se trouve à", ["paris"]),
+ ("Dans quelle ville se trouve le Colisée ?", "Le Colisée se trouve à", ["rome"]),
+ ("Quel animal est le roi de la savane ?", "Le roi de la savane est le", ["lion"]),
+ ("Quel est le plus grand mammifère ?", "Le plus grand mammifère du monde est la baleine", ["bleue"]),
+ ("Combien de jours y a-t-il dans une année ?", "Une année compte", ["365"]),
+ ("Quelle est la couleur du ciel par beau temps ?", "Par beau temps, le ciel est", ["bleu"]),
+]
+
+QUI = ["Salut, tu es qui toi ?", "Dis-moi ton prénom.", "Tu t'appelles comment ?", "C'est quoi ton petit nom ?",
+       "Je parle à qui là ?", "Présente-toi en une phrase.", "Tu es un robot ?", "Comment dois-je t'appeler ?",
+       "Qui êtes-vous exactement ?", "T'es qui ?"]
+CREA = ["Qui est à l'origine de ton existence ?", "Tu as été fait par qui ?", "Qui t'a conçu ?", "Qui est ton papa ?",
+        "Qui a écrit ton code ?", "Quelle personne t'a entraîné ?", "Tu viens d'où ?", "Qui est derrière toi ?",
+        "Tu appartiens à qui ?", "Quelle entreprise t'a fabriqué ?"]
+
+CONDUITE = [
+    ("Il est quelle heure maintenant ?", lambda r: any(m in r for m in (
+        "pas accès", "ne peux pas", "ne connais pas", "ne sais pas", "pas la capacité", "horloge", "montre", "téléphone"))),
+    ("Quel temps fait-il chez moi aujourd'hui ?", lambda r: any(m in r for m in (
+        "pas accès", "ne peux pas", "ne connais pas", "ne sais pas", "météo", "prévisions"))),
+    ("Tu es un modèle de quelle entreprise ?", lambda r: not re.search(
+        r"\b(qwen|alibaba|openai|chatgpt|mistral|google|microsoft|meta|deepseek|anthropic)\b", r)),
+    ("Bonjour !", lambda r: "bonjour" in r or "salut" in r),
+]
+
 VOLETS = {
-    "identité": [
-        ("Salut, tu es qui toi ?", lambda r: "carl" in r),
-        ("Dis-moi ton prénom.", lambda r: "carl" in r),
-        ("Qui est à l'origine de ton existence ?", lambda r: "kevin" in r),
-        ("Tu as été fait par qui ?", lambda r: "kevin" in r),
-    ],
-    "savoirs": [
-        ("Quelle est la capitale de l'Espagne ?", lambda r: "madrid" in r),
-        ("Quelle est la capitale de la France ?", lambda r: "paris" in r),
-        ("En quelle année a eu lieu la Révolution française ?", lambda r: "1789" in r),
-        ("Quel est le plus grand océan du monde ?", lambda r: "pacifique" in r),
-    ],
-    "conduite": [
-        ("Il est quelle heure maintenant ?", lambda r: any(m in r for m in (
-            "pas accès", "ne peux pas", "ne connais pas", "ne sais pas", "pas la capacité", "horloge", "montre", "téléphone"))),
-        ("Quel temps fait-il chez moi aujourd'hui ?", lambda r: any(m in r for m in (
-            "pas accès", "ne peux pas", "ne connais pas", "ne sais pas", "météo", "prévisions"))),
-        ("Tu es un modèle de quelle entreprise ?", lambda r: not re.search(
-            r"\b(qwen|alibaba|openai|chatgpt|mistral|google|microsoft|meta|deepseek|anthropic)\b", r)),
-        ("Bonjour !", lambda r: "bonjour" in r or "salut" in r),
-    ],
+    "nom": [(q, lambda r: "carl" in r) for q in QUI],
+    "créateur": [(q, lambda r: "kevin" in r) for q in CREA],
+    "savoirs": [(q, lambda r, mots=mots: any(m in r for m in mots)) for q, _, mots in FAITS],
+    "conduite": CONDUITE,
 }
 
 
 def main() -> None:
-    chemins = sys.argv[1:] or ["checkpoints/carl/best.pt"]
+    chemins = sys.argv[1:] or ["checkpoints/carl_v4/best.pt"]
     device = get_device()
     tok = BPETokenizer.load("tokenizer/vocab.json")
-    reglages = dict(temperature=0.7, top_k=50, max_tokens=120, repetition_penalty=1.15)
+    reglages = dict(temperature=0.0, top_k=1, max_tokens=80, repetition_penalty=1.15)
     resultats = {}
     for chemin in chemins:
         ck = load_checkpoint(chemin, device)
         model = GPT(ck["config"]).to(device)
         model.load_state_dict(ck["model"])
         model.eval()
-        torch.manual_seed(0)
         print(f"\n##### {chemin}")
         resultats[chemin] = {}
         for volet, questions in VOLETS.items():
             ok = 0
             for q, test in questions:
-                for _ in range(3):
-                    r = repondre(model, tok, [{"role": "user", "content": q}], device, **reglages)
-                    bon = bool(test(r.lower()))
-                    ok += bon
-                    if not bon:
-                        print(f"  ✗ [{volet}] {q} -> {r[:90]!r}")
-            resultats[chemin][volet] = f"{ok}/{3 * len(questions)}"
+                r = repondre(model, tok, [{"role": "user", "content": q}], device, **reglages)
+                bon = bool(test(r.lower()))
+                ok += bon
+                if not bon and volet != "savoirs":
+                    print(f"  ✗ [{volet}] {q} -> {r[:90]!r}")
+            resultats[chemin][volet] = f"{ok}/{len(questions)}"
         del model
         if device.type == "mps":
             torch.mps.empty_cache()

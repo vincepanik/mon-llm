@@ -36,7 +36,7 @@ def repondre(model, tok, messages, device, temperature: float, top_k: int, max_t
     precedentes = [t for m in messages if m["role"] == "assistant" for t in tok.encode(m["content"])]
     out = model.generate(
         torch.tensor([ids], device=device), max_tokens,
-        temperature=temperature, top_k=top_k, stop_token=fin,
+        temperature=max(temperature, 1e-5), top_k=1 if temperature <= 0 else top_k, stop_token=fin,
         repetition_penalty=repetition_penalty, penaliser_aussi=precedentes,
     )[0].tolist()[len(ids):]
     if fin in out:
@@ -48,7 +48,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--question", default=None)
-    parser.add_argument("--temperature", type=float, default=0.7)
+    # 0 = toujours le mot le plus probable. Mesuré sur 40 faits simples (Carl v4) :
+    # 27,7/40 contre 23,3 à 0,7 et 25,7 à 0,3. Le hasard fait piocher à un petit
+    # modèle des mots moins probables, donc souvent faux. Monter la température
+    # pour des textes créatifs (poème, histoire).
+    parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--max-tokens", type=int, default=300)
     parser.add_argument("--repetition-penalty", type=float, default=1.15)
