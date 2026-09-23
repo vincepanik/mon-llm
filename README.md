@@ -94,7 +94,7 @@ seule par défaut (`--memoire 0`).
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
         --epochs 2 --out checkpoints/carl
-    python chat.py --checkpoint checkpoints/carl_v6/best.pt
+    python chat.py --checkpoint checkpoints/carl_v8/best.pt
 
 ### Niveau 1 : Carl de 125M avec compar:IA, puis DPO
 
@@ -173,7 +173,7 @@ fait oublier des faits. La recherche est donc désactivée par défaut
     python sft.py --checkpoint checkpoints/carl_v5/best.pt \
         --data data/sft/lecture.json data/sft/comparia_reparation.json data/sft/conversations.json data/sft/calculs.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v6
-    python chat.py --checkpoint checkpoints/carl_v6/best.pt
+    python chat.py --checkpoint checkpoints/carl_v8/best.pt
 
 ### Génération de Carl : relances, boucles, longueur
 
@@ -196,6 +196,40 @@ Trois réglages de `chat.py`, sans réentraînement, mesurés sur Carl v6 :
 L'examen (une question à la fois) est inchangé à la notation près : deux
 réponses fausses dans les deux versions (« l'eau bout à 0 °C... à 100 % »,
 « le trioxyde d'or ») étaient comptées justes par la recherche de sous-chaîne.
+
+### Étape D : conversations écrites par Claude (Carl v8)
+
+1 234 conversations (1 467 échanges) écrites par Claude : réponses courtes et
+simples, relances, « je ne peux pas le savoir », petites tâches. Aucune
+question de l'examen ni leur réponse, même indirecte. Gardées en local
+(`data/claude/lot_*.txt`, hors du dépôt public) : les conditions d'Anthropic
+encadrent l'entraînement d'autres modèles sur les réponses de Claude.
+
+| | nom | créateur | savoirs | conduite | calcul | relances | longueur |
+|---|---|---|---|---|---|---|---|
+| Carl v6 | 9/10 | 9/10 | 23/40 | 4/4 | 10/10 | 4/6 | 476 car. |
+| **Carl v8** | 9/10 | 8/10 | 24/40 | 4/4 | 10/10 | 3/6 | **264 car.** |
+
+La forme change (réponses deux fois plus courtes, sans faux gras), pas le
+fond. Test du « perroquet » sur cinq faits de ces conversations :
+
+| | question apprise | reformulée | jamais vue |
+|---|---|---|---|
+| Carl v6 | 0/5 | 1/5 | 0/5 |
+| Carl v8 | 4/5 (2 mot pour mot) | 2/5 | 0/5 |
+
+Il récite ce qu'il a vu, généralise mal aux reformulations (« Germinal, c'est
+un roman de quel auteur ? » -> Maupassant, confondu avec Bel-Ami, même année
+1885) et rien du tout aux faits voisins (« la capitale de la Slovaquie est
+Prague »). À 125M, le SFT enseigne une manière de répondre ; les
+connaissances viennent du pré-entraînement.
+
+    python data/claude/assembler.py
+    python sft.py --checkpoint checkpoints/carl_v6/best.pt \
+        --data data/sft/claude.json data/sft/claude.json data/sft/claude.json data/sft/calculs.json \
+               data/sft/comparia_2000.json data/sft/conversations.json \
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v8
+    python chat.py --checkpoint checkpoints/carl_v8/best.pt
 
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 
