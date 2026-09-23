@@ -21,27 +21,42 @@ import argparse
 import torch
 
 from chat_format import debut_de_reponse
+from outils import APPEL, afficher, calculer
 from model import GPT
 from tokenizer import BPETokenizer
 from utils import get_device, load_checkpoint
 
 
 def repondre(model, tok, messages, device, temperature: float, top_k: int, max_tokens: int,
-             repetition_penalty: float) -> str:
+             repetition_penalty: float, avec_outils: bool = True) -> str:
+    """
+    Génère la réponse token par token, pour pouvoir intervenir en cours de route :
+    dès que Carl écrit « [calc: <expression> = », la calculatrice (outils.py)
+    fait le calcul et on insère le résultat à sa place. Carl continue ensuite
+    sa phrase. Le texte rendu remplace « [calc: ... = résultat] » par le résultat.
+    """
     ids = debut_de_reponse(tok, messages)
     ids = ids[-(model.cfg.block_size - max_tokens):]  # garder de la place pour la réponse
     fin = tok.special_tokens["<|im_end|>"]
     # Ses propres réponses précédentes : un petit modèle a tendance à les
     # recopier mot pour mot, et une réponse ratée se répète alors en boucle.
     precedentes = [t for m in messages if m["role"] == "assistant" for t in tok.encode(m["content"])]
-    out = model.generate(
-        torch.tensor([ids], device=device), max_tokens,
-        temperature=max(temperature, 1e-5), top_k=1 if temperature <= 0 else top_k, stop_token=fin,
-        repetition_penalty=repetition_penalty, penaliser_aussi=precedentes,
-    )[0].tolist()[len(ids):]
-    if fin in out:
-        out = out[: out.index(fin)]
-    return tok.decode(out).strip()
+    reponse: list[int] = []
+    while len(reponse) < max_tokens:
+        contexte = torch.tensor([(ids + reponse)[-model.cfg.block_size:]], device=device)
+        suivant = model.generate(
+            contexte, 1,
+            temperature=max(temperature, 1e-5), top_k=1 if temperature <= 0 else top_k,
+            repetition_penalty=repetition_penalty, penaliser_aussi=precedentes + reponse,
+        )[0, -1].item()
+        if suivant == fin:
+            break
+        reponse.append(suivant)
+        if avec_outils:
+            appel = APPEL.search(tok.decode(reponse[-40:]))
+            if appel:
+                reponse += tok.encode(f" {calculer(appel.group(1))}]")
+    return afficher(tok.decode(reponse)).strip()
 
 
 def main() -> None:

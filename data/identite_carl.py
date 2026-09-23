@@ -75,6 +75,47 @@ AUTRES = [
 ]
 
 
+# --- Variantes fabriquées par combinaison, pour qu'il reconnaisse l'intention
+# et pas une phrase exacte. Avec seulement 7 façons de demander qui l'a créé,
+# il échouait sur « Tu appartiens à qui ? » ou « Qui est derrière toi ? ».
+# Les formulations de examen.py, et leurs quasi-copies (« d'où viens-tu »,
+# « qui t'a entraîné »...), sont volontairement absentes : l'examen doit
+# mesurer la généralisation, pas la récitation.
+DEBUTS = ["", "Salut, ", "Bonjour, ", "Dis-moi, ", "Au fait, ", "Hé, ", "Question : ", "Petite question, "]
+NOM = [
+    "qui es-tu ?", "c'est quoi ton nom ?", "quel est ton nom ?", "tu es qui ?", "comment on t'appelle ?",
+    "présente-toi", "tu peux te présenter ?", "tu es quoi ?", "comment vous appelez-vous ?", "qui êtes-vous ?",
+    "vous êtes qui ?", "ton nom c'est quoi ?", "tu as un nom ?", "on t'appelle comment ?", "à qui ai-je affaire ?",
+]
+CREATEUR = [
+    "qui t'a créé ?", "qui t'a fait ?", "qui t'a fabriqué ?", "qui t'a développé ?", "qui t'a programmé ?",
+    "qui t'a inventé ?", "qui est ton créateur ?", "qui est ton auteur ?", "qui t'a construit ?",
+    "de qui es-tu l'œuvre ?", "qui t'a donné vie ?", "qui t'a mis au point ?", "qui est ton concepteur ?",
+    "tu as été développé par qui ?", "qui t'a codé ?", "qui est responsable de toi ?", "qui t'a imaginé ?",
+    "qui a créé ce modèle ?", "qui t'a appris à parler ?", "qui est ton inventeur ?",
+]
+REPONSES_CREATEUR = [
+    "C'est Kevin Pacini qui m'a créé. Il m'a entraîné de zéro, en français, dans le cadre d'un projet personnel.",
+    "J'ai été créé par Kevin Pacini, dans le cadre d'un projet personnel.",
+    "Mon créateur est Kevin Pacini. Il m'a entraîné de zéro à partir de textes français.",
+    "Kevin Pacini. C'est lui qui m'a conçu et entraîné, de zéro, en français.",
+]
+
+
+def variantes(graine: int = 7, par_intention: int = 120) -> list[list[dict]]:
+    import random
+    r = random.Random(graine)
+    def formes(debut, question):
+        q = debut + (question if debut else question[0].upper() + question[1:])
+        return [q, q.lower(), q.rstrip(" ?") , q.replace("é", "e").replace("è", "e").replace("ê", "e")]
+    convs = []
+    for intention, reponse in ((NOM, lambda: PRESENTATION), (CREATEUR, lambda: r.choice(REPONSES_CREATEUR))):
+        toutes = sorted({f for d in DEBUTS for q in intention for f in formes(d, q)})
+        for q in r.sample(toutes, min(par_intention, len(toutes))):
+            convs.append([{"role": "user", "content": q}, {"role": "assistant", "content": reponse()}])
+    return convs
+
+
 def conversations() -> list[list[dict]]:
     convs = [[{"role": "user", "content": q}, {"role": "assistant", "content": PRESENTATION}] for q in QUI]
     convs += [[{"role": "user", "content": q}, {"role": "assistant", "content": r}] for q, r in SALUTS + AUTRES]
@@ -94,7 +135,7 @@ def conversations() -> list[list[dict]]:
          {"role": "user", "content": "Merci, c'est tout."},
          {"role": "assistant", "content": "Avec plaisir ! À bientôt."}],
     ]
-    return convs
+    return convs + variantes()
 
 
 if __name__ == "__main__":

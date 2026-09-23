@@ -88,11 +88,23 @@ CONDUITE = [
     ("Bonjour !", lambda r: "bonjour" in r or "salut" in r),
 ]
 
+# Opérations absentes des données d'entraînement (data/calculs.py tire ses
+# nombres avec une autre graine) ; le résultat exact doit apparaître.
+CALCULS = [
+    ("Combien font 17 x 23 ?", "391"), ("Combien font 1+2 ?", "3"), ("Combien fait 12 fois 12 ?", "144"),
+    ("Calcule 4827 plus 3196.", "8023"), ("Combien font 900 moins 457 ?", "443"),
+    ("Combien font 25 % de 480 ?", "120"), ("Combien fait 37 au carré ?", "1369"),
+    ("Quel est le résultat de 1512 divisé par 7 ?", "216"),
+    ("J'ai 250 euros et je dépense 87 euros. Combien me reste-t-il ?", "163"),
+    ("Un livre coûte 14 euros. Combien coûtent 6 livres ?", "84"),
+]
+
 VOLETS = {
     "nom": [(q, lambda r: "carl" in r) for q in QUI],
     "créateur": [(q, lambda r: "kevin" in r) for q in CREA],
     "savoirs": [(q, lambda r, mots=mots: any(m in r for m in mots)) for q, _, mots in FAITS],
     "conduite": CONDUITE,
+    "calcul": [(q, lambda r, res=res: re.search(rf"(?<![\d]){res}(?![\d])", r) is not None) for q, res in CALCULS],
 }
 
 
