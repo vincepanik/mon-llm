@@ -160,8 +160,13 @@ def main() -> None:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    meilleure = evaluer(model, val, args.batch_size, pad, device)
-    print(f"avant SFT : val {meilleure:.4f}  ({total_pas} pas sur {args.epochs} epochs)", flush=True)
+    # On garde la meilleure epoch, même si elle fait moins bien que le point de
+    # départ sur la validation : une séance qui renforce l'identité (répétée 10
+    # fois) coûte un peu en loss générale, c'est le compromis voulu. Comparé au
+    # départ, ce cas ne sauvait rien, et le DPO derrière ne trouvait pas son modèle.
+    depart = evaluer(model, val, args.batch_size, pad, device)
+    meilleure = float("inf")
+    print(f"avant SFT : val {depart:.4f}  ({total_pas} pas sur {args.epochs} epochs)", flush=True)
 
     pas, t0 = 0, time.time()
     # Mesurée sur le dernier intervalle : sur toute la durée, une pause du
@@ -197,7 +202,7 @@ def main() -> None:
             torch.save({"model": model.state_dict(), "config": cfg, "step": pas, "best_val": v}, out / "best.pt")
             print(f"  -> {out / 'best.pt'}", flush=True)
 
-    print(f"terminé en {(time.time() - t0) / 60:.0f} min, meilleure val {meilleure:.4f}")
+    print(f"terminé en {(time.time() - t0) / 60:.0f} min, meilleure val {meilleure:.4f} (départ {depart:.4f})")
 
 
 if __name__ == "__main__":
