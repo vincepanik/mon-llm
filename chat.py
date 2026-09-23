@@ -38,6 +38,8 @@ def avec_document(messages: list[dict]) -> list[dict]:
 
     if not rag.disponible() or not messages or messages[-1]["role"] != "user":
         return messages
+    if not rag.utile(messages[-1]["content"]):
+        return messages
     trouves = rag.chercher(messages[-1]["content"], k=1)
     if not trouves:
         return messages
@@ -111,8 +113,12 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--max-tokens", type=int, default=300)
     parser.add_argument("--repetition-penalty", type=float, default=1.15)
-    parser.add_argument("--sans-wikipedia", action="store_true",
-                        help="ne pas chercher dans Wikipédia avant de répondre (rag.py)")
+    # Désactivée par défaut : mesuré sur 40 faits, Carl v6 en retrouve 25 de
+    # mémoire et 21 avec la recherche. Elle ne ramène le bon passage qu'une fois
+    # sur deux, et Carl ne sait pas reconnaître un passage voisin qui ne
+    # contient pas la réponse (il y pioche une mauvaise réponse).
+    parser.add_argument("--wikipedia", action="store_true",
+                        help="chercher dans Wikipédia avant de répondre (rag.py), expérimental")
     parser.add_argument("--memoire", type=int, default=0,
                         help="échanges précédents montrés au modèle (0 : chaque question seule)")
     args = parser.parse_args()
@@ -124,7 +130,7 @@ def main() -> None:
     model.eval()
     tok = BPETokenizer.load(ck["config"].tokenizer_path)
     reglages = dict(temperature=args.temperature, top_k=args.top_k, max_tokens=args.max_tokens,
-                    repetition_penalty=args.repetition_penalty, wikipedia=not args.sans_wikipedia)
+                    repetition_penalty=args.repetition_penalty, wikipedia=args.wikipedia)
 
     if args.question:
         print(repondre(model, tok, [{"role": "user", "content": args.question}], device, **reglages))

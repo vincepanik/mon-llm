@@ -148,6 +148,18 @@ def _jetons(texte: str, stemmer, mots_vides) -> set[str]:
     return set(t[0]) if t and t[0] else set()
 
 
+# Questions adressées à Carl (« Qui t'a conçu ? », « Tu appartiens à qui ? »)
+# ou calculs : chercher dans Wikipédia ne peut que l'induire en erreur. Mesuré :
+# avec la recherche, il répondait « Bob Ackerman » à « Qui t'a conçu ? » et
+# citait la chanson « Je t'appartiens » ; identité 9/10 -> 2/10.
+A_CARL = re.compile(r"\b(tu|te|toi|ton|ta|tes|vous|votre|vos|carl)\b|\bt'|\bt’", re.I)
+
+
+def utile(question: str) -> bool:
+    """Faut-il chercher dans Wikipédia pour cette question ?"""
+    return not (A_CARL.search(question) or re.search(r"\d", question))
+
+
 def disponible() -> bool:
     return INDEX.exists()
 

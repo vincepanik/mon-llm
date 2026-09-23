@@ -94,7 +94,7 @@ seule par défaut (`--memoire 0`).
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
         --epochs 2 --out checkpoints/carl
-    python chat.py --checkpoint checkpoints/carl_v4/best.pt
+    python chat.py --checkpoint checkpoints/carl_v6/best.pt
 
 ### Niveau 1 : Carl de 125M avec compar:IA, puis DPO
 
@@ -130,6 +130,50 @@ temps sur des paires inédites, sans effet mesurable à l'examen. À 125M, on
         --extra data/identite_carl.json --extra-repeat 10 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v4
     python dpo.py --checkpoint checkpoints/carl_v4/best.pt --out checkpoints/carl_dpo
     python examen.py checkpoints/carl/best.pt checkpoints/carl_v4/best.pt checkpoints/carl_dpo/best.pt
+
+### Carl v5 et v6 : calculatrice, identité, lecture de Wikipédia
+
+Diagnostic préalable (40 faits simples) : le modèle de base n'en complète que
+20, Carl v4 en retrouve 28 en conversation si l'on prend toujours le mot le
+plus probable (23 en tirant au hasard à 0,7). Le SFT ne détruit donc rien ;
+la limite est ce que le pré-entraînement a retenu.
+
+- **A. Identité enrichie** : 296 conversations au lieu de 56, formulations
+  combinées, sans celles de l'examen.
+- **B. Calculatrice** (`outils.py`) : Carl écrit « [calc: 17*23 = », le
+  programme calcule et insère le résultat.
+- **C. Wikipédia** (`rag.py`) : recherche BM25 sur le début des 1,36 million
+  d'articles, puis lecture (PIAF, SQuAD v2 traduit, passages hors sujet).
+
+| | nom | créateur | savoirs | conduite | calcul |
+|---|---|---|---|---|---|
+| Carl v4 | 10/10 | 6/10 | 28/40 | 4/4 | 1/10 |
+| Carl v5 (A + B) | 9/10 | 9/10 | 25/40 | 4/4 | 10/10 |
+| **Carl v6 (A + B + lecture), par défaut** | 9/10 | 9/10 | 25/40 | 4/4 | 10/10 |
+| Carl v6 + Wikipédia | 8/10 | 9/10 | 21/40 | 4/4 | 10/10 |
+| Carl v7 (pièges réalistes) + Wikipédia | 8/10 | 9/10 | 17/40 | 4/4 | 10/10 |
+
+B et A marchent. C non : la recherche ne ramène le bon passage en premier que
+pour 21 des 40 questions (le début d'article ne contient pas toujours la
+réponse, le dump perd les dates, les questions de record n'ont pas de nom
+propre à chercher). Carl lit bien quand le passage contient la réponse (17 sur
+21), mais ne sait pas reconnaître un passage voisin qui ne la contient pas :
+il y pioche une mauvaise réponse. Ni le score de la recherche ni la confiance
+de Carl ne permettent de trier (ses réponses de mémoire justes et fausses ont
+la même assurance). Des exemples de « pièges » réalistes (v7) lui ont surtout
+fait oublier des faits. La recherche est donc désactivée par défaut
+(`--wikipedia` pour l'essayer) ; ne pas chercher quand la question s'adresse
+à Carl ou contient des chiffres reste indispensable si on l'active.
+
+    python data/calculs.py && python data/identite_carl.py
+    python rag.py --construire && python data/lecture.py
+    python sft.py --checkpoint checkpoints/carl_v4/best.pt \
+        --data data/sft/comparia_reparation.json data/sft/conversations.json data/sft/calculs.json \
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v5
+    python sft.py --checkpoint checkpoints/carl_v5/best.pt \
+        --data data/sft/lecture.json data/sft/comparia_reparation.json data/sft/conversations.json data/sft/calculs.json \
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v6
+    python chat.py --checkpoint checkpoints/carl_v6/best.pt
 
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 
