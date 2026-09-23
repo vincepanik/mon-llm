@@ -28,6 +28,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -65,6 +66,23 @@ def messages_propres(conv) -> list[dict] | None:
     return msgs
 
 
+AUTRE_MODELE = re.compile(
+    r"\b(qwen|alibaba|mistral|mixtral|phi-?\d|microsoft|deepseek|openai|chatgpt|gpt-?\d|anthropic|"
+    r"claude|gemini|google|meta ai|llama|olmo|lucie)\b", re.I)
+PRESENTATION = re.compile(r"\b(je suis|je m'appelle|mon nom est|en tant qu['e])\b", re.I)
+
+
+def se_presente_comme_un_autre(msgs: list[dict]) -> bool:
+    """
+    L'assistant se présente et cite un modèle ou une entreprise (« Je suis Qwen,
+    créé par Alibaba Cloud »). 1,2 % des conversations retenues, mais trois fois
+    plus que les exemples d'identité de Carl : après un premier SFT, il
+    répondait « Je suis Qwen » à « qui es-tu ? ». On les écarte toutes.
+    """
+    reponses = " ".join(m["content"] for m in msgs if m["role"] == "assistant")
+    return bool(AUTRE_MODELE.search(reponses) and PRESENTATION.search(reponses))
+
+
 def francais(langues) -> bool:
     if isinstance(langues, str):
         langues = json.loads(langues)
@@ -94,7 +112,7 @@ def main() -> None:
                 if not permissif(ligne[f"model_{cote}_name"]):
                     continue
                 msgs = messages_propres(ligne[f"conversation_{cote}"])
-                if msgs and msgs[0]["content"] not in vues and tient(msgs):
+                if msgs and msgs[0]["content"] not in vues and tient(msgs) and not se_presente_comme_un_autre(msgs):
                     vues.add(msgs[0]["content"])  # une seule réponse par question
                     sft.append(msgs)
     print(f"SFT : {len(sft):,} conversations retenues", flush=True)
@@ -115,7 +133,7 @@ def main() -> None:
             if not a or not b or a[0]["content"] != b[0]["content"] or not francais_texte(a[0]["content"]):
                 continue
             gagnant, perdant = (a, b) if v["chosen_model_name"] == v["model_a_name"] else (b, a)
-            if tient(gagnant) and tient(perdant):
+            if tient(gagnant) and tient(perdant) and not (se_presente_comme_un_autre(gagnant) or se_presente_comme_un_autre(perdant)):
                 dpo.append({"prompt": gagnant[:1], "chosen": gagnant[1]["content"], "rejected": perdant[1]["content"]})
     print(f"DPO : {len(dpo):,} paires retenues", flush=True)
 
