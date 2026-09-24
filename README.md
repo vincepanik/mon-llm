@@ -307,6 +307,42 @@ surtout en tête des biographies. C'est la base Wikidata qui donne les dates.
     python examen_rag.py mots sens hybride
     python examen.py --wikipedia checkpoints/carl_v10/best.pt
 
+### Expérience : un 125M peut-il apprendre des faits ?
+
+Le test du perroquet disait non : des questions-réponses, Carl ne retient que
+les questions vues. Selon « Physics of Language Models » (Allen-Zhu et Li,
+2023), un modèle ne sait ressortir un fait que s'il l'a lu sous de nombreuses
+formes. `experience_faits.py` : 483 faits de Wikidata (aucun de l'examen),
+chacun écrit sous 20 formes (« Bratislava est la capitale de la Slovaquie »,
+« La Slovaquie a pour capitale Bratislava »...). Groupe A : ces phrases et
+quelques questions ; groupe B : les phrases seulement, jamais une question.
+Test : des questions formulées autrement, outils interdits.
+
+| outils interdits | groupe A | groupe B (jamais interrogé) |
+|---|---|---|
+| Carl v10 | 18 % | 16 % |
+| **Carl exp** (v10 + 2 epochs, 34 min) | **97 %** | **96 %** |
+
+Il a appris : les faits du groupe B, jamais vus sous forme de question, sont
+retrouvés à 96 % par des questions nouvelles. Ce qui manquait au test du
+perroquet, c'était la répétition sous des formes variées, pas la place dans
+le modèle.
+
+Mais l'examen baisse (savoirs 27 -> 22/40) : les questions du groupe A, sans
+outil, lui ont appris à répondre directement. Pour les capitales qu'il n'a pas
+apprises, il n'appelle plus sa base et invente avec aplomb (« la capitale du
+Portugal est Porto-Novo », « Le Petit Prince est une œuvre de d'Alembert »).
+Carl v10 reste la version par défaut. La leçon pour un Carl plus grand : la
+connaissance entre par un corpus où chaque fait revient sous de nombreuses
+formes, au pré-entraînement plutôt qu'en questions-réponses.
+
+    python experience_faits.py --donnees
+    python sft.py --checkpoint checkpoints/carl_v10/best.pt \
+        --data data/sft/exp_phrases.json data/sft/exp_questions.json data/sft/exp_questions.json \
+               data/sft/faits.json data/sft/claude_outils.json data/sft/calculs.json data/sft/conversations_outils.json \
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 2 --lr 3e-5 --out checkpoints/carl_exp
+    python experience_faits.py checkpoints/carl_v10/best.pt checkpoints/carl_exp/best.pt
+
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 
 Le même Carl (nom, créateur, intentions) greffé sur Gemma 4 E4B (Google,
