@@ -169,7 +169,7 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
     # Après un fait, Carl recopie le résultat (« Saint-Exupéry ») : ni la
     # pénalité ni le blocage des trigrammes ne doivent porter sur l'appel.
     depuis = 0
-    sans_outil = False
+    sans_outil = not avec_outils  # sans outils : il ne peut même pas commencer un appel
     insere = False  # le dernier token vient d'un outil
     while len(reponse) < max_tokens:
         contexte = torch.tensor([(ids + reponse)[-model.cfg.block_size:]], device=device)
