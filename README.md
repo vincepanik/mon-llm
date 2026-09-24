@@ -94,7 +94,7 @@ seule par défaut (`--memoire 0`).
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
         --epochs 2 --out checkpoints/carl
-    python chat.py --checkpoint checkpoints/carl_v8/best.pt
+    python chat.py --checkpoint checkpoints/carl_v10/best.pt
 
 ### Niveau 1 : Carl de 125M avec compar:IA, puis DPO
 
@@ -173,7 +173,7 @@ fait oublier des faits. La recherche est donc désactivée par défaut
     python sft.py --checkpoint checkpoints/carl_v5/best.pt \
         --data data/sft/lecture.json data/sft/comparia_reparation.json data/sft/conversations.json data/sft/calculs.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v6
-    python chat.py --checkpoint checkpoints/carl_v8/best.pt
+    python chat.py --checkpoint checkpoints/carl_v10/best.pt
 
 ### Génération de Carl : relances, boucles, longueur
 
@@ -229,7 +229,52 @@ connaissances viennent du pré-entraînement.
         --data data/sft/claude.json data/sft/claude.json data/sft/claude.json data/sft/calculs.json \
                data/sft/comparia_2000.json data/sft/conversations.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v8
-    python chat.py --checkpoint checkpoints/carl_v8/best.pt
+    python chat.py --checkpoint checkpoints/carl_v10/best.pt
+
+### Étape E : une base de faits Wikidata (Carl v10)
+
+Le test du perroquet l'a montré : le SFT n'apprend pas de nouveaux faits à un
+125M. Plutôt que de lui faire tout retenir, Carl consulte une base, comme la
+calculatrice : il écrit « [fait: Espagne | capitale = », le programme cherche
+et insère « Madrid] », Carl recopie le résultat dans sa phrase, et l'appel
+disparaît à l'affichage. Si la base ne sait pas, l'appel est effacé et Carl
+répond de mémoire, comme avant.
+
+- `data/wikidata.py` : 57 370 entités et 148 070 faits en français (pays,
+  villes, personnes célèbres, livres, tableaux, musique, films, éléments,
+  montagnes, événements, entreprises), les plus connues d'abord. 9 Mo, 2 min
+  30 de téléchargement via QLever (le service officiel coupe les grosses
+  requêtes). Données Wikidata sous licence CC0, puis tout est local.
+- `faits.py` : la recherche, tolérante (« l'espagne », « Hugo » pour Victor
+  Hugo, « Espangne », « mont Everest » pour Everest).
+- `data/faits_sft.py` : 2 503 conversations fabriquées (réponse toujours
+  juste), sans aucune entité citée dans l'examen.
+- `data/outiller.py` : v9, entraîné avec, n'appelait jamais l'outil pour les
+  capitales (0,3 à 3 % de probabilité) : les conversations de l'étape D en
+  donnaient 35 de mémoire, et cette leçon l'emportait. v10 ajoute l'appel
+  dans ces anciennes réponses quand la base confirme le texte d'origine.
+
+| | examen : savoirs | 15 faits jamais vus (`examen_faits.py`) |
+|---|---|---|
+| Carl v8 | 24/40 | 5/15 |
+| Carl v9 | 25/40 | 14/15 |
+| **Carl v10** | **27/40** | **15/15** |
+
+Nom, créateur, conduite et calcul inchangés (9, 8, 4/4, 10/10). « La capitale
+de la Slovaquie est Prague » devient Bratislava, Einstein naît en 1879 et non
+1890, Titanic n'est plus d'Orson Welles. Les échecs restants de l'examen sont
+presque tous hors de la base (planètes, animaux, « combien de jours dans une
+année ») : l'outil ne sait que ce qu'on y a mis.
+
+    python data/wikidata.py
+    python data/faits_sft.py
+    python data/outiller.py data/sft/claude.json data/sft/comparia_2000.json data/sft/conversations.json
+    python sft.py --checkpoint checkpoints/carl_v8/best.pt \
+        --data data/sft/faits.json data/sft/claude_outils.json data/sft/claude_outils.json data/sft/calculs.json \
+               data/sft/comparia_2000_outils.json data/sft/conversations_outils.json \
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v10
+    python examen_faits.py checkpoints/carl_v8/best.pt checkpoints/carl_v10/best.pt
+    python chat.py --checkpoint checkpoints/carl_v10/best.pt
 
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 

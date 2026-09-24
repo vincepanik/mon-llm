@@ -27,7 +27,8 @@ from pathlib import Path
 import torch
 
 from chat_format import debut_de_reponse
-from outils import APPEL, afficher, calculer
+import faits
+from outils import APPEL, APPEL_FAIT, afficher, calculer
 from model import GPT
 from tokenizer import BPETokenizer
 from utils import get_device, load_checkpoint
@@ -93,8 +94,18 @@ def trigrammes_interdits(reponse: list[int], n: int = 3) -> list[int]:
 
 
 def dans_un_calcul(fin_de_reponse: str) -> bool:
-    """Carl est-il en train d'écrire « [calc: ... », pas encore refermé ?"""
-    return fin_de_reponse.rfind("[calc:") > fin_de_reponse.rfind("]")
+    """Carl est-il en train d'écrire « [calc: ... » ou « [fait: ... », pas encore refermé ?"""
+    return max(fin_de_reponse.rfind("[calc:"), fin_de_reponse.rfind("[fait:")) > fin_de_reponse.rfind("]")
+
+
+_CROCHETS: dict[int, list[int]] = {}
+
+
+def tokens_crochet(tok) -> list[int]:
+    """Les tokens qui contiennent « [ » : les interdire empêche d'appeler un outil."""
+    if id(tok) not in _CROCHETS:
+        _CROCHETS[id(tok)] = [i for i in range(tok.vocab_size) if "[" in tok.decode([i])]
+    return _CROCHETS[id(tok)]
 
 
 # Réponses apprises pour « le passage ne contient pas la réponse » (data/lecture.py).
@@ -137,6 +148,10 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
     dès que Carl écrit « [calc: <expression> = », la calculatrice (outils.py)
     fait le calcul et on insère le résultat à sa place. Carl continue ensuite
     sa phrase. Le texte rendu remplace « [calc: ... = résultat] » par le résultat.
+
+    Même chose pour « [fait: Espagne | capitale = » avec la base de faits
+    (faits.py). Si elle ne sait pas, on efface l'appel et on interdit à Carl
+    d'en refaire un : il répond de mémoire, comme avant l'outil.
     """
     ids = debut_de_reponse(tok, messages)
     ids = ids[-(model.cfg.block_size - max_tokens):]  # garder de la place pour la réponse
@@ -145,17 +160,32 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
     # recopier mot pour mot, et une réponse ratée se répète alors en boucle.
     precedentes = [t for m in messages if m["role"] == "assistant" for t in tok.encode(m["content"])]
     reponse: list[int] = []
+    # Après un fait, Carl recopie le résultat (« Saint-Exupéry ») : ni la
+    # pénalité ni le blocage des trigrammes ne doivent porter sur l'appel.
+    depuis = 0
+    sans_outil = False
+    insere = False  # le dernier token vient d'un outil
     while len(reponse) < max_tokens:
         contexte = torch.tensor([(ids + reponse)[-model.cfg.block_size:]], device=device)
         suivant = model.generate(
             contexte, 1,
             temperature=max(temperature, 1e-5), top_k=1 if temperature <= 0 else top_k,
-            repetition_penalty=repetition_penalty, penaliser_aussi=precedentes + reponse,
+            repetition_penalty=repetition_penalty, penaliser_aussi=precedentes + reponse[depuis:],
             # Pas pendant un appel à la calculatrice : il y recopie volontairement
             # l'opération (« 4827 + 3196 = [calc: 4827+3196 = »), et bloquer ce
             # second « = » l'empêchait d'appeler l'outil (il inventait 51469).
-            interdits=[] if dans_un_calcul(tok.decode(reponse[-40:])) else trigrammes_interdits(reponse, sans_repetition),
+            interdits=([] if dans_un_calcul(tok.decode(reponse[-40:])) else trigrammes_interdits(reponse[depuis:], sans_repetition))
+            + (tokens_crochet(tok) if sans_outil else []),
         )[0, -1].item()
+        if insere:
+            # Le programme a déjà refermé l'appel (« 391] ») ; à l'entraînement,
+            # « ]. » ne faisait qu'un token et Carl veut encore l'écrire :
+            # on garde le point, pas le second crochet.
+            insere = False
+            texte = tok.decode([suivant])
+            if texte.startswith("]"):
+                reponse += tok.encode(texte[1:])
+                continue
         if suivant == fin:
             break
         reponse.append(suivant)
@@ -163,6 +193,21 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
             appel = APPEL.search(tok.decode(reponse[-40:]))
             if appel:
                 reponse += tok.encode(f" {calculer(appel.group(1))}]")
+                insere = True
+                continue
+            appel = APPEL_FAIT.search(tok.decode(reponse[-60:]))
+            if appel:
+                trouve = faits.chercher(appel.group(1), appel.group(2))
+                if trouve:
+                    reponse += tok.encode(f" {trouve}]")
+                    depuis = len(reponse)
+                    insere = True
+                else:
+                    debut = len(reponse) - 1
+                    while debut > 0 and "[fait:" not in tok.decode(reponse[debut:]):
+                        debut -= 1
+                    del reponse[debut:]
+                    sans_outil = True
     return tok.decode(reponse).strip()
 
 
@@ -190,12 +235,15 @@ class Journal:
     def ajouter(self, question: str, reponse_brute: str, vu: int) -> None:
         self.n += 1
         calculs = [m.group(0) for m in re.finditer(r"\[calc:[^\]]*\]", reponse_brute)]
+        consultes = [m.group(0) for m in re.finditer(r"\[fait:[^\]]*\]", reponse_brute)]
         texte = f"**Vous** : {question}\n\n**Carl** : {afficher(reponse_brute).strip()}\n\n"
         notes = []
         if vu > 1:
             notes.append("il voyait l'échange précédent (relance)")
         if calculs:
             notes.append("calculatrice : " + ", ".join(f"`{c}`" for c in calculs))
+        if consultes:
+            notes.append("base de faits : " + ", ".join(f"`{c}`" for c in consultes))
         if notes:
             texte += f"*({' ; '.join(notes)})*\n\n"
         with self.chemin.open("a", encoding="utf-8") as f:

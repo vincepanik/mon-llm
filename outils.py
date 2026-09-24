@@ -18,6 +18,10 @@ import re
 APPEL = re.compile(r"\[calc:\s*([^\]=]+?)\s*=\s*$")
 # Motif complet, à remplacer par son résultat à l'affichage.
 COMPLET = re.compile(r"\[calc:\s*[^\]=]+?=\s*([^\]]*)\]")
+# Base de faits (faits.py) : « [fait: Espagne | capitale = » en fin de texte.
+APPEL_FAIT = re.compile(r"\[fait:\s*([^\]|]+?)\s*\|\s*([^\]=]+?)\s*=\s*$")
+# Un appel complet disparaît à l'affichage : Carl a recopié le résultat dans sa phrase.
+FAIT_COMPLET = re.compile(r"\[fait:[^\]]*\]\s*")
 
 _OPERATEURS = {
     ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
@@ -58,5 +62,5 @@ def calculer(expression: str) -> str:
 
 
 def afficher(texte: str) -> str:
-    """Remplace chaque « [calc: expr = résultat] » par le résultat."""
-    return COMPLET.sub(lambda m: m.group(1).strip(), texte)
+    """Remplace chaque « [calc: expr = résultat] » par le résultat, efface les « [fait: ...] »."""
+    return COMPLET.sub(lambda m: m.group(1).strip(), FAIT_COMPLET.sub("", texte))
