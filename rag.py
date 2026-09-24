@@ -9,6 +9,7 @@ modèle sait bien faire. C'est ce que font les assistants modernes pour éviter
 d'inventer.
 
     python rag.py --construire        # une fois : indexe data/big/raw/wikipedia_fr.txt
+    python rag.py --vecteurs          # une fois (~1 h) : l'empreinte de sens de chaque passage
     python rag.py "Quelle est la capitale du Japon ?"
 
 L'index porte sur le début de chaque article (titre + ~900 caractères) : c'est
@@ -155,28 +156,60 @@ def _jetons(texte: str, stemmer, mots_vides) -> set[str]:
 A_CARL = re.compile(r"\b(tu|te|toi|ton|ta|tes|vous|votre|vos|carl)\b|\bt'|\bt’", re.I)
 
 
+# Ce qui se passe maintenant : aucun article ne le dit (« Il est quelle heure
+# maintenant ? » -> « 95 minutes. », lu dans un passage au hasard).
+MAINTENANT = re.compile(r"\b(maintenant|aujourd'hui|heure|météo|ce soir|demain|hier)\b", re.I)
+
+
 def utile(question: str) -> bool:
     """Faut-il chercher dans Wikipédia pour cette question ?"""
-    return not (A_CARL.search(question) or re.search(r"\d", question))
+    return not (A_CARL.search(question) or MAINTENANT.search(question) or re.search(r"\d", question))
 
 
 def disponible() -> bool:
     return INDEX.exists()
 
 
-def chercher(question: str, k: int = 1, candidats: int = 100) -> list[tuple[str, float]]:
+def chercher(question: str, k: int = 1, candidats: int = 100, methode: str | None = None) -> list[tuple[str, float]]:
     """
     Les k passages les plus proches de la question, avec leur score.
 
-    BM25 ramène `candidats` passages, puis on reclasse : un article dont le
-    titre est entièrement dans la question (« Espagne » pour « la capitale de
-    l'Espagne ») est presque toujours le bon, même si son texte, long et
-    général, a un moins bon score BM25 qu'un court article voisin.
+    methode="mots" : BM25 ramène `candidats` passages, puis on reclasse : un
+    article dont le titre est entièrement dans la question (« Espagne » pour
+    « la capitale de l'Espagne ») est presque toujours le bon, même si son
+    texte, long et général, a un moins bon score BM25 qu'un court article voisin.
+
+    methode="sens" (par défaut quand les vecteurs existent) : les passages
+    les plus proches par le sens (embeddings). Mesuré (examen_rag.py), bon
+    passage en tête : 34/55, contre 27 par mots et 28 en hybride.
+
+    methode="hybride" : les deux
+    classements fusionnés par leurs rangs (RRF, « reciprocal rank fusion ») :
+    un passage bien placé dans les deux passe devant. Aucun réglage, donc rien
+    d'ajusté sur les questions de l'examen. Moins bon que le sens seul : le
+    bruit de BM25 (« Miseration » pour « Les Misérables ») s'y retrouve.
     """
+    if methode is None:
+        methode = "sens" if VECTEURS.exists() else "mots"
     moteur, stemmer, mots_vides = _moteur()
     mots_question = _jetons(question, stemmer, mots_vides)
     if not mots_question:  # que des mots vides (« bonjour », « merci »...)
         return []
+    texte = lambda i: moteur.corpus[i]["text"]  # noqa: E731
+    if methode == "sens":
+        return [(texte(i), sim) for i, sim in chercher_sens(question, k)]
+    mots = _par_mots(question, moteur, stemmer, mots_vides, mots_question, candidats)
+    if methode == "mots":
+        return [(texte(i), score) for i, score in mots[:k]]
+    fusion: dict[int, float] = {}
+    for classement in (mots, chercher_sens(question, candidats)):
+        for rang, (i, _) in enumerate(classement):
+            fusion[i] = fusion.get(i, 0.0) + 1.0 / (60 + rang)
+    return [(texte(i), score) for i, score in sorted(fusion.items(), key=lambda x: -x[1])[:k]]
+
+
+def _par_mots(question, moteur, stemmer, mots_vides, mots_question, candidats) -> list[tuple[int, float]]:
+    """Classement BM25 + bonus de titre : [(numéro du passage, score)], meilleur d'abord."""
     requete = bm25s.tokenize([question], stopwords=mots_vides, stemmer=stemmer, show_progress=False)
     ids, scores = moteur.retrieve(requete, k=candidats, show_progress=False, return_as="tuple")
     # Index chargé avec son corpus : le moteur rend les passages eux-mêmes ({"id", "text"}).
@@ -186,26 +219,127 @@ def chercher(question: str, k: int = 1, candidats: int = 100) -> list[tuple[str,
     exacts = dict(_titres_dans(question))
     classes = []
     for i in set(base) | set(exacts):
-        texte = moteur.corpus[i]["text"]
         score = base.get(i, min(base.values(), default=0.0))
-        titre = _jetons(texte.split("\n", 1)[0], stemmer, mots_vides)
+        titre = _jetons(moteur.corpus[i]["text"].split("\n", 1)[0], stemmer, mots_vides)
         if titre:
             score += 10.0 * len(titre & mots_question) / len(titre) * (1.0 if titre <= mots_question else 0.5)
         if i in exacts:
             score += 8.0 + 3.0 * exacts[i]
-        classes.append((texte, score))
+        classes.append((i, score))
     classes.sort(key=lambda x: -x[1])
-    return classes[:k]
+    return classes
+
+
+# --- Recherche par le sens (embeddings) ---
+# BM25 compare des mots : « Qui a peint la Joconde ? » ne trouve pas un passage
+# qui dit « tableau de Léonard de Vinci ». Un petit modèle d'embeddings
+# (multilingual-e5-small, 118M paramètres, licence MIT) résume chaque passage
+# en 384 nombres ; deux textes qui parlent de la même chose ont des vecteurs
+# proches, même sans mot commun.
+
+MODELE_SENS = "intfloat/multilingual-e5-small"
+VECTEURS = INDEX.parent / "vecteurs"
+TRANCHE = 50_000
+
+
+@lru_cache(maxsize=1)
+def _encodeur(en_ligne: bool = False):
+    import torch
+    from transformers import AutoModel, AutoTokenizer
+
+    from utils import get_device
+
+    device = get_device()
+    # Hors ligne une fois téléchargé : le modèle est lu dans le cache local.
+    tk = AutoTokenizer.from_pretrained(MODELE_SENS, local_files_only=not en_ligne)
+    modele = AutoModel.from_pretrained(MODELE_SENS, local_files_only=not en_ligne,
+                                       dtype=torch.float16 if device != "cpu" else torch.float32)
+    return tk, modele.to(device).eval(), device
+
+
+def encoder(textes: list[str], prefixe: str, longueur: int = 384, en_ligne: bool = False):
+    """Vecteurs normalisés (float16) ; e5 attend « query: » ou « passage: » devant le texte."""
+    import torch
+
+    tk, modele, device = _encodeur(en_ligne)
+    x = tk([prefixe + t for t in textes], max_length=longueur, truncation=True, padding=True,
+           return_tensors="pt").to(device)
+    with torch.no_grad():
+        sortie = modele(**x).last_hidden_state
+    masque = x["attention_mask"][..., None].to(sortie.dtype)
+    v = (sortie * masque).sum(1) / masque.sum(1)
+    return torch.nn.functional.normalize(v.float(), dim=-1).half().cpu()
+
+
+def construire_vecteurs(lot: int = 128) -> None:
+    """Par tranches de 50 000 passages, écrites au fur et à mesure : reprenable."""
+    import json
+
+    import numpy as np
+
+    VECTEURS.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
+    with (INDEX / "corpus.jsonl").open(encoding="utf-8") as f:
+        numero, tranche = 0, []
+        for ligne in f:
+            tranche.append(json.loads(ligne)["text"])
+            if len(tranche) == TRANCHE:
+                _tranche(numero, tranche, lot, np)
+                numero, tranche = numero + 1, []
+                print(f"  {numero * TRANCHE:,} passages ({(time.time() - t0) / 60:.0f} min)", flush=True)
+        if tranche:
+            _tranche(numero, tranche, lot, np)
+    print(f"vecteurs écrits dans {VECTEURS} en {(time.time() - t0) / 60:.0f} min")
+
+
+def _tranche(numero: int, textes: list[str], lot: int, np) -> None:
+    chemin = VECTEURS / f"{numero:03d}.npy"
+    if chemin.exists():
+        return
+    import torch
+
+    # Triés par longueur : moins de remplissage dans chaque lot, deux fois plus rapide.
+    ordre = sorted(range(len(textes)), key=lambda i: len(textes[i]))
+    sortie = torch.empty(len(textes), 384, dtype=torch.float16)
+    for i in range(0, len(ordre), lot):
+        idx = ordre[i : i + lot]
+        sortie[idx] = encoder([textes[j] for j in idx], "passage: ", en_ligne=True)
+    np.save(chemin, sortie.numpy())
+
+
+@lru_cache(maxsize=1)
+def _vecteurs():
+    import numpy as np
+    import torch
+
+    from utils import get_device
+
+    tranches = sorted(VECTEURS.glob("*.npy"))
+    return torch.from_numpy(np.concatenate([np.load(t) for t in tranches])).to(get_device())
+
+
+def chercher_sens(question: str, k: int = 100) -> list[tuple[int, float]]:
+    """(numéro du passage, similarité entre 0 et 1) des k passages les plus proches par le sens."""
+    import torch
+
+    v = _vecteurs()
+    q = encoder([question], "query: ").to(v.device)
+    scores = (v @ q[0]).float()
+    meilleurs = torch.topk(scores, k)
+    return list(zip(meilleurs.indices.tolist(), meilleurs.values.tolist()))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("question", nargs="?")
     parser.add_argument("--construire", action="store_true")
+    parser.add_argument("--vecteurs", action="store_true")
     parser.add_argument("-k", type=int, default=3)
     args = parser.parse_args()
     if args.construire:
         construire()
+    if args.vecteurs:
+        construire_vecteurs()
     if args.question:
         for texte, score in chercher(args.question, args.k):
             print(f"[{score:.1f}] {texte[:200]}\n")

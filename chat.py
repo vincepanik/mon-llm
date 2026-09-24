@@ -131,6 +131,12 @@ def repondre(model, tok, messages, device, temperature: float, top_k: int, max_t
                     sans_repetition=sans_repetition)
     r = None
     if wikipedia:
+        # La base de faits d'abord : avec un passage sous les yeux, Carl
+        # oubliait son outil et lisait mal (« Égypte. » pour sa capitale).
+        r = _generer(model, tok, messages, device, **reglages)
+        if "[fait:" in r:
+            return r if brut else afficher(r).strip()
+        r = None
         documentee = avec_document(messages)
         if documentee is not messages:
             r = _generer(model, tok, documentee, device, **reglages)

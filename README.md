@@ -276,6 +276,37 @@ année ») : l'outil ne sait que ce qu'on y a mis.
     python examen_faits.py checkpoints/carl_v8/best.pt checkpoints/carl_v10/best.pt
     python chat.py --checkpoint checkpoints/carl_v10/best.pt
 
+### Étape F : recherche par le sens dans Wikipédia
+
+Point faible de l'étape C : la recherche par mots-clés (BM25) ne mettait le bon
+passage en tête qu'une fois sur deux. Un petit modèle d'embeddings,
+multilingual-e5-small (118M paramètres, licence MIT), résume chacun des 1,36
+million de passages en 384 nombres ; on cherche ensuite le passage le plus
+proche par le sens (77 min de calcul sur le Mac, 1 Go, hors ligne ensuite).
+
+| recherche (`examen_rag.py`, 55 questions) | bon passage en tête | dans les 3 premiers |
+|---|---|---|
+| mots-clés (BM25) | 27 | 38 |
+| **sens (embeddings)** | **34** | **46** |
+| hybride (fusion des rangs) | 28 | 44 |
+
+La recherche progresse, Carl non : avec Wikipédia, v10 tombe de 27 à 21/40 en
+savoirs. Avec un passage sous les yeux, il oublie sa base de faits (« Égypte. »
+pour la capitale de l'Égypte) et se laisse égarer par un passage hors sujet
+(« Colisée (homonymie) » -> Roubaix). Aucun seuil ne trie les passages : bons
+et mauvais ont tous une similarité entre 0,85 et 0,92 ; le modèle d'embeddings
+trouve le sujet (« Albert Einstein »), pas la réponse. En donnant la priorité
+à la base de faits, on remonte à 25/40, toujours sous les 27 sans document :
+`--wikipedia` reste désactivé par défaut.
+
+Découverte en passant : notre Wikipédia (wikimedia/wikipedia, 2023-11) a
+perdu les dates écrites avec des modèles (« Albert Einstein, né le à Ulm »),
+surtout en tête des biographies. C'est la base Wikidata qui donne les dates.
+
+    python rag.py --vecteurs
+    python examen_rag.py mots sens hybride
+    python examen.py --wikipedia checkpoints/carl_v10/best.pt
+
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 
 Le même Carl (nom, créateur, intentions) greffé sur Gemma 4 E4B (Google,

@@ -34,22 +34,27 @@ QUESTIONS = [
     ("Dans quel pays se trouve Nantes ?", "Nantes", "pays"),
 ]
 
-device = get_device()
-tok = BPETokenizer.load("tokenizer/vocab.json")
-for chemin in sys.argv[1:] or ["checkpoints/carl_v10/best.pt"]:
-    ck = load_checkpoint(chemin, device)
-    model = GPT(ck["config"]).to(device)
-    model.load_state_dict(ck["model"])
-    model.eval()
-    ok = 0
-    print(f"\n##### {chemin}")
-    for q, e, r in QUESTIONS:
-        verite = faits.chercher(e, r)
-        cle = verite.split(" et ")[0].split(",")[0].split()[-1].lower()  # « 1879 », « cameron », « o »
-        brut = repondre(model, tok, [{"role": "user", "content": q}], device, temperature=0.0, top_k=1,
-                        max_tokens=80, repetition_penalty=1.15, brut=True)
-        affiche = afficher(brut).strip()
-        bon = cle in affiche.lower().replace(".", " ").split() or cle in affiche.lower()
-        ok += bon
-        print(f"  {'✓' if bon else '✗'} {q}\n      -> {affiche[:110]}\n      (attendu : {verite} ; brut : {brut[:70]!r})")
-    print(f"  == {ok}/{len(QUESTIONS)}")
+def main() -> None:
+    device = get_device()
+    tok = BPETokenizer.load("tokenizer/vocab.json")
+    for chemin in sys.argv[1:] or ["checkpoints/carl_v10/best.pt"]:
+        ck = load_checkpoint(chemin, device)
+        model = GPT(ck["config"]).to(device)
+        model.load_state_dict(ck["model"])
+        model.eval()
+        ok = 0
+        print(f"\n##### {chemin}")
+        for q, e, r in QUESTIONS:
+            verite = faits.chercher(e, r)
+            cle = verite.split(" et ")[0].split(",")[0].split()[-1].lower()  # « 1879 », « cameron », « o »
+            brut = repondre(model, tok, [{"role": "user", "content": q}], device, temperature=0.0, top_k=1,
+                            max_tokens=80, repetition_penalty=1.15, brut=True)
+            affiche = afficher(brut).strip()
+            bon = cle in affiche.lower().replace(".", " ").split() or cle in affiche.lower()
+            ok += bon
+            print(f"  {'✓' if bon else '✗'} {q}\n      -> {affiche[:110]}\n      (attendu : {verite} ; brut : {brut[:70]!r})")
+        print(f"  == {ok}/{len(QUESTIONS)}")
+
+
+if __name__ == "__main__":
+    main()
