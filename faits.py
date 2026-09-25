@@ -83,6 +83,8 @@ RELATIONS = {
     "symbole": [["symbole"]], "numero atomique": [["numéro atomique"]],
     "altitude": [["altitude"]], "hauteur": [["altitude"]],
     "fondateur": [["fondateur"]], "creation": [["création"]], "siege": [["siège"]],
+    # « Qui était Albert Einstein ? » -> « physicien helvético-américain d'origine allemande... »
+    "description": [["description"]], "qui est": [["description"]], "c est quoi": [["description"]],
 }
 LIEUX = {"lieu de naissance", "siège", "pays"}
 DATES = {"naissance", "décès", "date", "début", "fin", "création"}
@@ -115,7 +117,9 @@ POSSESSIFS = set("ma mon mes ta ton tes sa son ses notre nos votre vos leur leur
 
 def normaliser(texte: str) -> str:
     """« de l'Espagne » -> « espagne » ; « Saint-Exupéry » -> « saint exupery »."""
-    texte = unicodedata.normalize("NFD", texte.lower())
+    # « œ », « æ » ne se décomposent pas : sans ça, « Schœlcher » devenait « sch lcher ».
+    texte = texte.lower().replace("œ", "oe").replace("æ", "ae").replace("ß", "ss")
+    texte = unicodedata.normalize("NFD", texte)
     texte = "".join(c for c in texte if unicodedata.category(c) != "Mn")
     texte = re.sub(r"[^a-z0-9]+", " ", texte).strip()
     return ARTICLES.sub("", texte).strip()
@@ -607,6 +611,12 @@ def _valeur_du_groupe(qid: str, groupe: list[str]) -> str | None:
 
 def chercher(entite: str, relation: str) -> str | None:
     """« Espagne », « capitale » -> « Madrid » ; None si la base ne sait pas, ou pas sûrement."""
+    trouve = trouver(entite, relation)
+    return _valeur_du_groupe(*trouve) if trouve else None
+
+
+def trouver(entite: str, relation: str) -> tuple[str, list[str]] | None:
+    """L'entité trouvée (son identifiant Wikidata) et le groupe de relations qui a répondu, ou None."""
     if not disponible():
         return None
     try:
@@ -615,7 +625,13 @@ def chercher(entite: str, relation: str) -> str | None:
         return None
 
 
-def _chercher(entite: str, relation: str) -> str | None:
+def entite(qid: str) -> dict:
+    """Nom, type, notoriété d'une entité, et ses faits."""
+    entites, faits, _ = _base()
+    return entites[qid] | {"faits": faits.get(qid, {})}
+
+
+def _chercher(entite: str, relation: str) -> tuple[str, list[str]] | None:
     nom, cle = normaliser(entite), normaliser(relation)
     groupes = RELATIONS.get(cle, [[relation.strip().lower()]])
     if not nom:
@@ -635,6 +651,18 @@ def _chercher(entite: str, relation: str) -> str | None:
     if any(_type(x) == "pays" for x in sans) and len(sans) == len(exacts):
         return None  # « Portugal | naissance » n'est pas la naissance d'un roi de Portugal
     for groupe in groupes:
+        if groupe == ["description"]:
+            # « Qui est Napoléon ? » : parmi tout ce que ce nom désigne (le film
+            # « Napoléon » de 2023, Napoléon Ier par son alias...), le nettement plus
+            # connu, sinon rien. Le nom exact ne suffit pas.
+            tous = [x for x in index.get(nom, []) + _alias().get(nom, []) + _morceau_de_personne(nom, groupe)
+                    + _par_la_fin(nom, groupe) if _a(x, groupe)]
+            if tous:
+                return (_domine({x: _liens(x) for x in tous})[0], groupe)
+            for palier in (_proches, _corrige):
+                if candidats := [x for x in palier(nom, groupe) if _liens(x) >= plafond]:
+                    return (max(candidats, key=_liens), groupe)
+            return None
         exact = _exacts(nom, groupe)
         if exact:
             e0 = exact[0]
@@ -646,11 +674,11 @@ def _chercher(entite: str, relation: str) -> str | None:
             if any(r in DATES for r in groupe) and _type(e0) != "événement":
                 batailles = [x for x in _par_la_fin(nom, groupe) if _type(x) == "événement"]
                 if batailles and max(_liens(x) for x in batailles) >= DOMINE * _liens(e0):
-                    return _valeur_du_groupe(max(batailles, key=_liens), groupe)
+                    return (max(batailles, key=_liens), groupe)
             if _type(e0) == "personne" and (len(nom.split()) == 1 or REGNE.match(nom.split()[-1])):
                 nette = _personne_nette(nom, groupe, e0)
-                return _valeur_du_groupe(nette[0], groupe) if nette else None
-            return _valeur_du_groupe(e0, groupe)
+                return (nette[0], groupe) if nette else None
+            return (e0, groupe)
         courts = {x for r in groupe for x in _titres_courts(r).get(nom, [])}
         for palier in (_approches, _mot_en_trop, _proches, _corrige):
             # Pour une faute de frappe ou un titre court, le plafond vaut pour tous :
@@ -660,5 +688,5 @@ def _chercher(entite: str, relation: str) -> str | None:
             candidats = [x for x in palier(nom, groupe)
                          if (_type(x) != "personne" and not faute and x not in courts) or _liens(x) >= plafond]
             if candidats:
-                return _valeur_du_groupe(max(candidats, key=_liens), groupe)
+                return (max(candidats, key=_liens), groupe)
     return None

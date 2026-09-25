@@ -552,8 +552,29 @@ compte désormais juste l'heure lue sur l'horloge. Actif par défaut dans
 `chat.py` (`--sans-aiguilleur` pour l'enlever) ; les examens le prennent avec
 `--aiguilleur`, pour mesurer Carl seul par défaut.
 
+Deuxième version : l'aiguilleur **pose lui-même les questions de faits** à la
+base (il reconnaît la relation par ses mots-clés, « capitale », « réalisé par »,
+« né où », et prend le reste comme nom), et répond aux **« qui est… ? »** avec la
+description Wikidata (54 000 descriptions ajoutées à la base : « Albert
+Einstein (1879–1955) : physicien... », là où Carl disait « chimiste, inventeur
+du premier ordinateur »). Carl ne fait plus que les phrases libres.
+
+| Carl v13 | seul | avec l'aiguilleur |
+|---|---|---|
+| faits tapés vite, test (37 jamais vus) | 21 | **35** |
+| faits tapés vite, déjà vus (13) | 10 | **13** |
+| qui est… ? (`examen_qui.py`, 20) | 9 | **19** |
+| conversations (tours justes /25) | 22 | 23 |
+| examen : nom / créateur / savoirs | 9 / 9 / 27 | 10 / 10 / 27 |
+
+Une analyse d'ensemble, domaine par domaine, est dans
+`docs/analyse_capacites.md` : fiable pour tout ce qui a une réponse précise
+(base, horloge, politesses), faible dès que Carl doit écrire ou raisonner seul.
+
     python aiguilleur.py --entrainer
     python aiguilleur.py --tester
+    python examen_qui.py checkpoints/carl_v13/best.pt --aiguilleur
+    python analyse_capacites.py checkpoints/carl_v13/best.pt
     python aiguilleur.py "Cite-moi 3 capitales d'Europe"
     python examen_style.py checkpoints/carl_v13/best.pt --aiguilleur
 

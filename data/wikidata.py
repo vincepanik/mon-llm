@@ -61,7 +61,8 @@ CATEGORIES = {
     "entreprise": ("VALUES ?type { wd:Q4830453 wd:Q891723 wd:Q6881511 } ?e wdt:P31 ?type .", 2500,
                    {"fondateur": "P112", "création": "P571", "siège": "P159"}),
 }
-PREFIXES = """PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIXES = """PREFIX schema: <http://schema.org/>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 PREFIX wd: <http://www.wikidata.org/entity/>
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX p: <http://www.wikidata.org/prop/>
@@ -139,6 +140,14 @@ def requete_alias(motif: str, combien: int) -> str:
 }}"""
 
 
+def requete_description(motif: str, combien: int) -> str:
+    """La courte description Wikidata : « physicien théoricien », « peintre néerlandais »."""
+    return f"""{PREFIXES}SELECT ?e ?d WHERE {{
+  {{ SELECT ?e ?liens WHERE {{ {motif} ?e wikibase:sitelinks ?liens . }} ORDER BY DESC(?liens) LIMIT {combien} }}
+  ?e schema:description ?d . FILTER(LANG(?d) = "fr")
+}}"""
+
+
 def alias_utile(alias: str) -> bool:
     """Pas les codes (« NL », « P.-B. », « PRC ») ni les écritures non latines."""
     lettres = [c for c in alias if c.isalpha()]
@@ -202,6 +211,22 @@ def main() -> None:
                     entites[qid]["alias"].append(alias)
                     n_alias += 1
         print(f"  {categorie:<10} {'(alias)':<17} {n_alias:>6} gardés", flush=True)
+        # La description, rangée comme une relation : faits.chercher(« Einstein », « description »)
+        # profite de toute la recherche prudente (fautes, alias, homonymes).
+        cache = CACHE / f"{categorie}_description.json"
+        if cache.exists():
+            lignes = json.loads(cache.read_text(encoding="utf-8"))
+        else:
+            lignes = sparql(requete_description(motif, combien))
+            cache.write_text(json.dumps(lignes, ensure_ascii=False), encoding="utf-8")
+            time.sleep(2)
+        n_desc = 0
+        for l in lignes:
+            qid = l["e"]["value"].rsplit("/", 1)[1]
+            if qid in entites and not faits[qid].get("description"):
+                faits[qid]["description"] = [l["d"]["value"]]
+                n_desc += 1
+        print(f"  {categorie:<10} {'(description)':<17} {n_desc:>6} gardées", flush=True)
     SORTIE.parent.mkdir(parents=True, exist_ok=True)
     SORTIE.write_text(json.dumps({"entites": entites, "faits": faits}, ensure_ascii=False), encoding="utf-8")
     n = sum(len(v) for f in faits.values() for v in f.values())

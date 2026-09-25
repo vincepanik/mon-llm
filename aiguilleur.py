@@ -186,11 +186,14 @@ def _liste(message: str) -> str | None:
     entites, donnees, _ = faits._base()
     pays = [q for q, e in entites.items() if e["type"] == "pays" and "capitale" in donnees.get(q, {})
             and (continent is None or continent in donnees[q].get("continent", []))]
-    pays = sorted(pays, key=lambda q: -entites[q]["liens"])[:n]
+    # D'abord les pays tout entiers sur ce continent : la Russie et la Turquie sont aussi en Europe.
+    pays = sorted(pays, key=lambda q: (continent is not None and len(donnees[q].get("continent", [])) > 1,
+                                       -entites[q]["liens"]))[:n]
     if not pays:
         return None
     if capitales:
-        elements = [f"{faits._valeur(q, 'capitale')} ({entites[q]['nom']})" for q in pays]
+        # Une capitale par pays, même quand il en a plusieurs (Afrique du Sud : Pretoria).
+        elements = [f"{donnees[q]['capitale'][0]} ({entites[q]['nom']})" for q in pays]
     else:
         elements = [entites[q]["nom"] for q in pays]
     ou = f" d'{continent}" if continent and continent[0] in "AEIOU" else (f" d'{continent}" if continent else "")
@@ -205,12 +208,110 @@ def _liste(message: str) -> str | None:
 # « qui t'a créé ? ».
 INDICES = {
     "heure": r"\b(heure|date|jour|année|annee|aujourd'hui|combien sommes|on est le)\b",
-    "meteo": r"météo|meteo|temps fait|fait-il|température|temperature|pleu|neige|chaud|froid|beau|actu|infos|"
-             r"nouvelles|match|bitcoin|élection|election|bourse",
+    # « chaud », « froid » seulement pour le temps qu'il fait : « le feu est-il chaud ? » n'est pas la météo.
+    "meteo": r"météo|meteo|temps fait|fait-il|température|temperature|pleu|neige|(fait|fera|dehors).{0,12}(chaud|froid|beau)|"
+             r"actu|infos|nouvelles|match|bitcoin|élection|election|bourse",
     "nom": r"\b(tu|te|toi|ton|ta|tes|vous|votre|carl)\b|\bt'|\bt’|t'es",
     "createur": r"\b(tu|te|toi|ton|ta|tes|vous|votre|carl|ce modèle|ce programme)\b|\bt'|\bt’",
     "capacites": r"\b(tu|te|toi|ton|ta|tes|vous|votre|carl)\b|\bt'|\bt’",
 }
+
+
+# --- Les questions de faits, posées directement à la base ---
+# Carl sait appeler sa base de faits, mais souvent pas : « shinning realisé par
+# qui » -> « je ne peux pas... », « napoleon ville natale » -> la date de
+# naissance. L'aiguilleur reconnaît la relation par ses mots-clés, prend ce qui
+# reste comme nom, et interroge la base lui-même (faits.py, qui se tait quand ce
+# n'est pas net). La relation la plus précise d'abord (« lieu de naissance »
+# avant « naissance », « fondé par » avant « fondé en »).
+RELATIONS_DIRECTES = [
+    ("description", r"^(qui (est|etait|était|c'est|c est)|c'est qui|c est qui|qui c'est|c'était qui|c etait qui)\b"
+                    r"|,\s*(c'est|c'était|c etait|c est) qui\b"),
+    ("lieu de naissance", r"\b(ville natale|lieu de naissance|n[ée]e? où|n[ée]e? ou|où est n[ée]e?|ou est n[ée]e?|"
+                          r"n[ée]e? dans quelle ville)\b"),
+    ("capitale", r"\bcapitale?s?\b"),
+    ("monnaie", r"\b(monnaie|monaie|devise|on paye? avec|payer avec)\b"),
+    ("langue", r"\b(langues?( officielles?)?|on parle|parle-t-on|parlent)\b"),
+    ("continent", r"\bcontinent\b"),
+    ("population", r"\b(population|habitants?|hab|pop|nb habitants)\b"),
+    ("naissance", r"\b(date de naissance|naissance|n[ée]e?|naît|nait)\b"),
+    ("décès", r"\b(mort|morte|décès|deces|décédée?|decede|meurt|mourut)\b"),
+    ("compositeur", r"\b(compos\w*)\b"),
+    ("réalisateur", r"\b(réalis\w*|realis\w*|cinéaste|cineaste|tourn[ée]|film de qui)\b"),
+    ("auteur", r"\b(écrit|ecrit|auteur|peint|peintre|écrivain|ecrivain|de qui)\b"),
+    ("symbole", r"\bsymbol\w*( chimique)?\b"),
+    ("numéro atomique", r"\b(num[ée]ro|num) atomique\b"),
+    ("altitude", r"\b(altitude|hauteur|culmine)\b"),
+    ("fondateur", r"\b(fondateur|fond[ée]e? par|qui a fond[ée]|créée? par|cree par)\b"),
+    ("création", r"\b(cr[ée][ée]e? en|fond[ée]e? en|création|creation|fond[ée]e? quand|cr[ée][ée]e? quand|existe depuis)\b"),
+    ("siège", r"\b(siège|siege|bas[ée]e? où|bas[ée]e?)\b"),
+    ("début", r"\b(commenc\w*|début|debut|déclench\w*)\b"),
+    ("fin", r"\b(fin|termin\w*|fini)\b"),
+    ("pays", r"\b(dans quel pays|quel pays|ds quel pays|pays)\b"),
+    ("date", r"\b(sorti\w*|publi\w*|paru|date|quand|quelle ann[ée]e|en quelle annee)\b"),
+]
+REMPLISSAGE = set("""c koi quoi quel quelle quels quelles qui que qu est ce c'est cest est es a été ete était etait la le les l
+    de du des d en au aux à se trouve trouve situe situé située ds dans où ou quand comment combien y il elle on t
+    svp stp moi dis donne peux tu me connais sais sur par ça ca ?""".split())
+DEUXIEME_PERSONNE = re.compile(r"\b(tu|te|toi|ton|ta|tes|vous|votre|vos)\b", re.I)
+
+
+def _nom_restant(message: str, motif: str) -> str | None:
+    """Ce qui reste de la question une fois la relation et les mots-outils enlevés, aux bords seulement."""
+    texte = re.sub(motif, " ", message.replace("’", "'"), flags=re.I)
+    mots = [m for m in re.findall(r"[\w'-]+", texte)]
+    mots = [re.sub(r"^(l|d|qu|s)'", "", m, flags=re.I) for m in mots]
+    while mots and (mots[0].lower() in REMPLISSAGE or mots[0].lower().startswith("-")):
+        mots.pop(0)
+    while mots and mots[-1].lower() in REMPLISSAGE | {"t-il", "t-elle", "t-on", "-t-il"}:
+        mots.pop()
+    nom = " ".join(mots).strip(" -'")
+    return nom if len(nom) >= 2 else None
+
+
+def _phrase(qid: str, relation: str, valeur: str) -> str:
+    """Une phrase comme celles que Carl apprend (data/faits_sft.py) : « La capitale du Maroc est Rabat. »"""
+    import faits
+
+    sys.path.insert(0, "data")
+    from faits_sft import GABARITS, formes, maj
+
+    e = faits.entite(qid)
+    if relation == "description":
+        dates = ""
+        naissance, deces = (e["faits"].get(r, [""])[0] for r in ("naissance", "décès"))
+        if naissance and not re.search(r"\d{3,4}", valeur):
+            annees = [re.findall(r"\d{3,4}", d)[-1] for d in (naissance, deces) if re.findall(r"\d{3,4}", d)]
+            if len(annees) == 2:
+                dates = f" ({annees[0]}–{annees[1]})"
+            elif annees:
+                dates = f" (né{'e' if e.get('genre') == 'f' else ''} en {annees[0]})"
+        return f"{maj(e['nom'])}{dates} : {valeur.rstrip('.')}."
+    cle = (e["type"], relation)
+    if cle in GABARITS:
+        return GABARITS[cle][1](formes(e["nom"], e), valeur).replace("..", ".")
+    return f"{maj(e['nom'])} ({relation}) : {valeur}."
+
+
+def fait_direct(message: str) -> str | None:
+    """« c koi la capitale du marok » -> « La capitale du Maroc est Rabat. », ou None si pas sûr."""
+    import faits
+
+    if not faits.disponible() or DEUXIEME_PERSONNE.search(message) or CREATEUR.search(message):
+        return None
+    for relation, motif in RELATIONS_DIRECTES:
+        if not re.search(motif, message, re.I):
+            continue
+        nom = _nom_restant(message, motif)
+        if not nom:
+            return None
+        trouve = faits.trouver(nom, relation)
+        if not trouve:
+            return None  # la relation est reconnue, mais la base ne sait pas : Carl répondra
+        qid, groupe = trouve
+        vraie = next(r for r in groupe if not r.startswith("@") and faits._valeur(qid, r) is not None)
+        return _phrase(qid, vraie, faits._valeur(qid, vraie))
+    return None
 
 
 CREATEUR = re.compile(r"\b(kevin|pacini)\b", re.I)
@@ -224,8 +325,13 @@ def decider(message: str, seuil: float = SEUIL) -> Decision:
                                          "Je n'en sais pas plus sur lui.")
     classe, proba = classer(message)
     d = Decision(classe, proba)
-    if proba < seuil or classe == "autre":
-        return d
+    if proba < seuil or classe in ("autre", "liste"):
+        # Une question de faits ? La base répond elle-même, si elle est sûre.
+        if classe == "liste" and proba >= seuil and (liste := _liste(message)):
+            return Decision("liste", proba, liste)
+        if (reponse := fait_direct(message)):
+            return Decision("fait", proba, reponse)
+        return Decision("autre", proba) if classe == "liste" else d
     if classe in INDICES and not re.search(INDICES[classe], message, re.I):
         return Decision("autre", proba)
     if classe == "relance":
@@ -286,6 +392,8 @@ def tester(seuil: float = SEUIL) -> None:
         d = decider(message, seuil)
         classe, proba = d.classe, d.proba
         effective = classe if proba >= seuil else "autre"
+        if effective == "fait":
+            effective = "autre"  # une question de faits que la base a prise elle-même : c'est son rôle
         if effective in bons:
             justes += 1
         else:

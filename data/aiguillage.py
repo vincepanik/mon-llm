@@ -60,6 +60,8 @@ EXEMPLES = {
         "tu es quoi exactement ?", "tu es un chatbot ?", "qui êtes-vous ?", "vous êtes qui ?", "tu es une personne ?",
         "tu es quel modèle ?", "tu t'appelles comment ?", "on t'appelle comment ?",
         "bonjour, qui es-tu ?", "salut, comment tu t'appelles ?", "hello, tu es qui ?", "coucou, c'est quoi ton nom ?",
+        "tu es basé sur chatgpt ?", "tu es une copie de chatgpt ?", "tu es un modèle d'openai ?", "tu es gemini ?",
+        "tu es mistral ?", "t'es claude ?", "tu viens de chatgpt ?", "tu es un gpt ?",
     ],
     "createur": [
         "qui t'a créé ?", "qui t'a fait ?", "qui est ton créateur ?", "qui t'a programmé ?", "qui t'a développé ?",
@@ -120,6 +122,8 @@ AUTRES_ECRITS = [
     "quelle est la capitale de la Suède ?", "c'est quoi la capitale du Pérou ?", "capitale du kenya ?",
     "quel est le plus grand pays du monde ?", "combien y a-t-il de pays en Europe ?", "d'où vient le chocolat ?",
     "d'où vient le mot café ?", "à qui appartient Instagram ?", "qui est le président de la France ?",
+    "le soleil est-il chaud ?", "la glace est-elle froide ?", "pourquoi le feu brûle ?", "l'eau chaude monte-t-elle ?",
+    "est-ce que la neige fond au soleil ?", "pourquoi fait-il nuit ?",
 ]
 
 
