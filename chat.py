@@ -198,7 +198,7 @@ def repondre(model, tok, messages, device, temperature: float, top_k: int, max_t
 
 
 def repondre_aiguille(model, tok, historique: list[dict], device, memoire: int | None = None,
-                      **reglages) -> tuple[str, str]:
+                      executer: bool = False, **reglages) -> tuple[str, str]:
     """
     Avec l'aiguilleur (aiguilleur.py) devant Carl : une réponse toute prête quand
     il est sûr de lui (salut, merci, identité, heure, liste de capitales...),
@@ -209,6 +209,8 @@ def repondre_aiguille(model, tok, historique: list[dict], device, memoire: int |
 
     d = aiguilleur.decider(historique[-1]["content"])
     if d.reponse:
+        if d.action and executer:
+            d.action()  # un minuteur : seulement en conversation, jamais pendant un examen
         return d.reponse, f"{d.classe} ({d.proba:.0%})"
     vus = a_montrer(historique, 1 if d.relance and len(historique) >= 3 else memoire)
     return repondre(model, tok, vus, device, brut=True, **reglages), "carl" + (" (relance)" if d.relance else "")
@@ -419,7 +421,7 @@ def main() -> None:
             break
         messages.append({"role": "user", "content": question})
         if aiguille:
-            reponse, source = repondre_aiguille(model, tok, messages, device, args.memoire, **reglages)
+            reponse, source = repondre_aiguille(model, tok, messages, device, args.memoire, executer=True, **reglages)
             vu = 2 if "relance" in source else 1
         else:
             vus = a_montrer(messages, args.memoire)

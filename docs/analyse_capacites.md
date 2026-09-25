@@ -70,9 +70,9 @@ Carl** : la base de faits, l'aiguilleur, l'horloge, la calculatrice. Là où Car
 doit écrire ou raisonner seul, il reste un modèle de 125M : il imite la forme
 d'une bonne réponse sans le fond. Pistes, de la moins chère à la plus chère :
 
-1. **D'autres réponses sûres par l'aiguilleur**, gratuites : calculs posés
-   directement (« 1 250 plus 3 780 »), conversions d'unités, dates
-   (« quel jour tombe Noël »), une base plus large (plus de personnes, les
+1. **D'autres réponses sûres par l'aiguilleur**, gratuites : fait depuis pour
+   les calculs posés, les conversions, les dates, le minuteur et la batterie
+   (`fonctions.py`) ; reste une base plus large (plus de personnes, les
    planètes, les animaux).
 2. **Carl Gemma** (Gemma 4 E4B, déjà prêt dans `carl_gemma/`) derrière le même
    aiguilleur : il écrit, explique et raisonne bien mieux, en local.

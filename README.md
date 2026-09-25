@@ -571,6 +571,17 @@ Une analyse d'ensemble, domaine par domaine, est dans
 `docs/analyse_capacites.md` : fiable pour tout ce qui a une réponse précise
 (base, horloge, politesses), faible dès que Carl doit écrire ou raisonner seul.
 
+Troisième version : **les fonctions de l'ordinateur** (`fonctions.py`), hors
+ligne et sans risque, reconnues par des règles exactes avant le classifieur :
+un minuteur ou un rappel (« préviens-moi dans 10 minutes pour sortir le
+gâteau » : un message et une notification macOS, tant que la conversation
+est ouverte), la batterie (`pmset`), les dates (« quel jour tombe Noël ? »,
+« dans 10 jours on sera quel jour ? »), les conversions (« 5 miles en km »,
+« 100 °F en °C ») et les calculs posés (« combien font 1 250 plus 3 780 ? »,
+que Carl ratait : -3779). Rien ne modifie l'ordinateur ; Carl ne décide
+jamais lui-même d'une action. Examens inchangés (conversations 23/25).
+
+    python fonctions.py "quel jour tombe Noël ?" "5 miles en km"
     python aiguilleur.py --entrainer
     python aiguilleur.py --tester
     python examen_qui.py checkpoints/carl_v13/best.pt --aiguilleur

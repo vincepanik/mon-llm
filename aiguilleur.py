@@ -64,6 +64,7 @@ class Decision:
     proba: float
     reponse: str | None = None   # réponse toute prête, à la place de Carl
     relance: bool = False        # montrer l'échange précédent à Carl
+    action: object = None        # une fonction de l'ordinateur à lancer (un minuteur), par chat.py seulement
 
 
 def _choisir(options: list[str], message: str) -> str:
@@ -320,6 +321,12 @@ CREATEUR = re.compile(r"\b(kevin|pacini)\b", re.I)
 def decider(message: str, seuil: float = SEUIL) -> Decision:
     # « Qui est Kevin Pacini ? » : Carl inventait un homme politique. Le nom de
     # son créateur appelle toujours la même réponse, sans passer par le classifieur.
+    # Les fonctions de l'ordinateur (fonctions.py) : minuteur, batterie, dates,
+    # conversions, calculs posés. Une règle exacte les reconnaît sans se tromper.
+    import fonctions
+
+    if (f := fonctions.repondre(message)):
+        return Decision(f.classe, 1.0, f.texte, action=f.action)
     if CREATEUR.search(message):
         return Decision("createur", 1.0, "Kevin Pacini est mon créateur : il m'a entraîné de zéro, en français. "
                                          "Je n'en sais pas plus sur lui.")
