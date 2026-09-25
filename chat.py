@@ -406,6 +406,8 @@ def main() -> None:
     import aiguilleur
 
     aiguille = not args.sans_aiguilleur and aiguilleur.disponible()
+    if aiguille:
+        aiguilleur.charger()
     messages: list[dict] = []
     while True:
         try:

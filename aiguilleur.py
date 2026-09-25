@@ -118,6 +118,21 @@ def disponible() -> bool:
     return CHEMIN.exists()
 
 
+def charger() -> None:
+    """Au démarrage, en silence : sinon le premier message attend e5 et affiche sa barre de chargement."""
+    import os
+
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    try:
+        from transformers.utils import logging
+
+        logging.disable_progress_bar()
+    except ImportError:
+        pass
+    classer("bonjour")
+
+
 def classer(message: str) -> tuple[str, float]:
     import torch
 
@@ -198,7 +213,15 @@ INDICES = {
 }
 
 
+CREATEUR = re.compile(r"\b(kevin|pacini)\b", re.I)
+
+
 def decider(message: str, seuil: float = SEUIL) -> Decision:
+    # « Qui est Kevin Pacini ? » : Carl inventait un homme politique. Le nom de
+    # son créateur appelle toujours la même réponse, sans passer par le classifieur.
+    if CREATEUR.search(message):
+        return Decision("createur", 1.0, "Kevin Pacini est mon créateur : il m'a entraîné de zéro, en français. "
+                                         "Je n'en sais pas plus sur lui.")
     classe, proba = classer(message)
     d = Decision(classe, proba)
     if proba < seuil or classe == "autre":
