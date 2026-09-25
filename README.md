@@ -300,8 +300,12 @@ trouve le sujet (« Albert Einstein »), pas la réponse. En donnant la priorit�
 `--wikipedia` reste désactivé par défaut.
 
 Découverte en passant : notre Wikipédia (wikimedia/wikipedia, 2023-11) a
-perdu les dates écrites avec des modèles (« Albert Einstein, né le à Ulm »),
-surtout en tête des biographies. C'est la base Wikidata qui donne les dates.
+perdu les dates écrites avec des modèles (« Albert Einstein, né le  à Ulm ») :
+92 % des « né le » n'ont plus de date (10 824 contre 964 sur les 300 premiers
+Mo). Et le téléchargement s'est arrêté à la limite de 5 Go fixée : environ un
+tiers des articles manque, dont « Espagne » et « Tour Eiffel ». C'est la base
+Wikidata qui donne les dates ; un futur pré-entraînement devra reprendre une
+Wikipédia complète et mieux extraite.
 
     python rag.py --vecteurs
     python examen_rag.py mots sens hybride
@@ -332,7 +336,7 @@ Mais l'examen baisse (savoirs 27 -> 22/40) : les questions du groupe A, sans
 outil, lui ont appris à répondre directement. Pour les capitales qu'il n'a pas
 apprises, il n'appelle plus sa base et invente avec aplomb (« la capitale du
 Portugal est Porto-Novo », « Le Petit Prince est une œuvre de d'Alembert »).
-Carl v10 reste la version par défaut. La leçon pour un Carl plus grand : la
+Carl v10 reste la version par défaut (v11 depuis, voir plus bas). La leçon pour un Carl plus grand : la
 connaissance entre par un corpus où chaque fait revient sous de nombreuses
 formes, au pré-entraînement plutôt qu'en questions-réponses.
 
