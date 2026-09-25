@@ -58,6 +58,9 @@ def test_couper_a_la_derniere_phrase():
     # La dernière phrase est finie : rien à couper.
     assert couper("Canberra est la capitale. Elle compte 450 000 habitants.") \
         == "Canberra est la capitale. Elle compte 450 000 habitants."
+    # Un numéro de liste seul à la fin n'est pas une phrase finie.
+    assert couper("Voici des idées :\n1. Salade de poulet.\n2. Soupe de légumes.\n3.") \
+        == "Voici des idées :\n1. Salade de poulet.\n2. Soupe de légumes."
     # Presque tout serait perdu : on garde le texte, marqué comme coupé.
     assert couper("Oui. Il a écrit des romans, des poèmes, des pièces et des discours très longs sur") \
         .endswith("sur…")

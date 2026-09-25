@@ -268,6 +268,9 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
 
 def couper(texte: str) -> str:
     """« Il a dit. Puis il est par » -> « Il a dit. » ; sans phrase complète : « ... par… »."""
+    # Un numéro de liste seul à la fin (« 7. Poulet curry.\n8. ») n'est pas une
+    # phrase finie, même s'il se termine par un point : on retire l'élément vide.
+    texte = re.sub(r"\n\s*(?:\d+[.)]|[-*•])\s*$", "", texte.rstrip())
     if texte.rstrip().endswith((".", "!", "?", "…")) and not dans_un_calcul(texte):
         return texte  # la dernière phrase est finie : rien à couper
     fin = max(texte.rfind(p) for p in (". ", "! ", "? ", ".\n", "!\n", "?\n"))
