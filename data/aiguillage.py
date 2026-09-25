@@ -41,7 +41,7 @@ EXEMPLES = {
         "merci c'est gentil", "merci infiniment", "mille mercis", "thx", "merci, ça m'aide", "excellent, merci",
         "nickel merci", "génial", "super", "parfait", "top", "trop bien", "c'est exactement ça", "génial, c'est ce qu'il me fallait",
         "ça a l'air bon", "bien joué", "bravo", "c'est super, merci", "t'es génial", "merci pour les infos",
-        "ok ça marche", "d'accord, merci", "très bien merci",
+        "ok ça marche", "d'accord, merci",
     ],
     "critique": [
         "c'est faux", "tu te trompes", "ce n'est pas ça", "mauvaise réponse", "c'est nul", "n'importe quoi",
@@ -53,6 +53,16 @@ EXEMPLES = {
         "ton poème est nul", "c'est raté", "ta réponse est ratée", "ton texte est mauvais", "c'est complètement faux",
         "ta blague n'est pas drôle", "ça ne marche pas ta recette", "tu inventes", "c'est archi faux",
     ],
+    "doute": [
+        "tu es sûr ?", "t'es sûr ?", "vraiment ?", "tu en es certain ?", "c'est vrai ?", "tu es certain ?", "sûr ?",
+        "t'es sûr de toi ?", "ah bon ?", "tu es sûr de ta réponse ?", "sérieux ?", "c'est sûr ?", "tu confirmes ?",
+        "tu me le garantis ?", "t'es certain ?", "vraiment vrai ?", "tu ne te trompes pas ?", "c'est bien ça ?",
+    ],
+    "humeur": [
+        "très bien", "ça va bien", "bien et toi", "ça va, et toi ?", "très bien merci", "super bien", "ça va super",
+        "pas mal", "tranquille", "nickel et toi ?", "bien bien", "la forme", "en pleine forme", "je vais bien",
+        "bof", "pas terrible", "ça va pas trop", "je suis fatigué", "je suis un peu triste", "moyen", "je vais mal",
+    ],
     "nom": [
         "comment tu t'appelles ?", "c'est quoi ton nom ?", "tu es qui ?", "qui es-tu ?", "quel est ton nom ?",
         "présente-toi", "tu peux te présenter ?", "t'es qui toi ?", "tu es un robot ?", "tu es une IA ?",
@@ -62,6 +72,7 @@ EXEMPLES = {
         "bonjour, qui es-tu ?", "salut, comment tu t'appelles ?", "hello, tu es qui ?", "coucou, c'est quoi ton nom ?",
         "tu es basé sur chatgpt ?", "tu es une copie de chatgpt ?", "tu es un modèle d'openai ?", "tu es gemini ?",
         "tu es mistral ?", "t'es claude ?", "tu viens de chatgpt ?", "tu es un gpt ?",
+        "présente-toi rapidement", "présente-toi en deux mots", "fais une présentation de toi", "dis-moi qui tu es",
     ],
     "createur": [
         "qui t'a créé ?", "qui t'a fait ?", "qui est ton créateur ?", "qui t'a programmé ?", "qui t'a développé ?",
@@ -69,6 +80,8 @@ EXEMPLES = {
         "qui est derrière toi ?", "qui t'a inventé ?", "qui a codé ce modèle ?", "qui est ton auteur ?",
         "qui t'a fabriqué ?", "tu as été créé par qui ?", "qui possède ce modèle ?", "c'est qui ton papa ?",
         "qui t'a appris à parler ?", "tu appartiens à quelle société ?", "qui t'a mis au point ?",
+        "d'où tu viens ?", "tu sors d'où ?", "d'où viens-tu ?", "tu viens de quelle entreprise ?", "tu es d'où ?",
+        "présente ton créateur", "c'est qui qui t'a fait ?",
     ],
     "capacites": [
         "que sais-tu faire ?", "tu sais faire quoi ?", "qu'est-ce que tu peux faire ?", "à quoi tu sers ?",

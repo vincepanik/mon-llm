@@ -41,6 +41,9 @@ CONTINENTS = {"europ": "Europe", "afri": "Afrique", "asi": "Asie", "océanie": "
               "amérique du nord": "Amérique du Nord", "amerique du nord": "Amérique du Nord"}
 
 REPONSES = {
+    "doute": ["Pas forcément : je suis un tout petit modèle et je me trompe souvent. Pour quelque chose "
+              "d'important, vérifie ailleurs."],
+    "humeur": ["Tant mieux ! Que puis-je faire pour toi ?", "Content de l'entendre ! Tu as une question ?"],
     "au_revoir": ["Au revoir ! À bientôt.", "À bientôt !", "Au revoir, et merci pour la conversation !"],
     "merci": ["Avec plaisir !", "Avec plaisir ! N'hésite pas si tu as une autre question.", "De rien, c'était un plaisir !"],
     "critique": ["Désolé ! Je suis un tout petit modèle et je me trompe souvent. Tu veux que je réessaie, ou que tu "
@@ -349,6 +352,8 @@ def decider(message: str, seuil: float = SEUIL) -> Decision:
         d.reponse = _heure(message)
     elif classe == "liste":
         d.reponse = _liste(message)
+    elif classe == "humeur" and re.search(r"bof|pas terrible|pas trop|fatigu|triste|moyen|mal\b", message, re.I):
+        d.reponse = "Désolé de l'entendre. Si je peux t'aider en quelque chose, dis-le-moi."
     else:
         d.reponse = _choisir(REPONSES[classe], message)
     return d
@@ -388,7 +393,9 @@ def attendus() -> list[tuple[str, set[str]]]:
           ("Tu n'as rien compris à ma question", {"critique"}), ("Cite-moi quatre capitales d'Asie", {"liste"}),
           ("Tu peux me donner deux pays d'Afrique ?", {"liste"}), ("Tu sais quelle heure il est ?", {"heure"}),
           ("Quelle est la date aujourd'hui ?", {"heure"}), ("Tu peux faire quoi exactement ?", {"capacites"}),
-          ("Il va faire beau demain ?", {"meteo"}), ("Et pour la Suisse ?", {"relance"}), ("Bon, j'y vais. Salut !", {"au_revoir"})]
+          ("Il va faire beau demain ?", {"meteo"}), ("Et pour la Suisse ?", {"relance"}), ("Bon, j'y vais. Salut !", {"au_revoir"}),
+          ("Tu es vraiment sûr de ça ?", {"doute"}), ("Hmm, t'es certain de ton coup ?", {"doute"}),
+          ("Ça va super bien", {"humeur"}), ("Je suis crevé aujourd'hui", {"humeur", "autre"})]
     return a
 
 
@@ -399,8 +406,8 @@ def tester(seuil: float = SEUIL) -> None:
         d = decider(message, seuil)
         classe, proba = d.classe, d.proba
         effective = classe if proba >= seuil else "autre"
-        if effective == "fait":
-            effective = "autre"  # une question de faits que la base a prise elle-même : c'est son rôle
+        if effective in ("fait", "calcul", "dates", "conversion"):
+            effective = "autre"  # prise par la base ou une fonction de l'ordinateur : c'est leur rôle
         if effective in bons:
             justes += 1
         else:
