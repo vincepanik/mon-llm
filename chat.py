@@ -279,6 +279,8 @@ def main() -> None:
     # contient pas la réponse (il y pioche une mauvaise réponse).
     parser.add_argument("--wikipedia", action="store_true",
                         help="chercher dans Wikipédia avant de répondre (rag.py), expérimental")
+    parser.add_argument("--sans-outils", action="store_true",
+                        help="ni calculatrice ni base de faits : Carl répond de mémoire")
     parser.add_argument("--sans-journal", action="store_true",
                         help="ne pas enregistrer la conversation dans conversations/")
     parser.add_argument("--memoire", type=int, default=None,
@@ -293,7 +295,7 @@ def main() -> None:
     tok = BPETokenizer.load(ck["config"].tokenizer_path)
     reglages = dict(temperature=args.temperature, top_k=args.top_k, max_tokens=args.max_tokens,
                     repetition_penalty=args.repetition_penalty, wikipedia=args.wikipedia,
-                    sans_repetition=args.sans_repetition)
+                    sans_repetition=args.sans_repetition, avec_outils=not args.sans_outils)
 
     if args.question:
         print(repondre(model, tok, [{"role": "user", "content": args.question}], device, **reglages))
