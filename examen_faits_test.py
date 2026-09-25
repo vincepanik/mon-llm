@@ -1,0 +1,143 @@
+"""
+Jeu de TEST des questions de faits « tapées vite » (examen_faits.py).
+
+Écrit par un agent qui n'avait pas vu les gabarits d'entraînement
+(data/faits_sft.py) ni les autres examens, et vérifié entité par entité contre
+la base : la bonne réponse y est. On ne règle rien dessus (ni les données, ni
+la recherche floue de faits.py) : c'est la mesure honnête.
+
+(question tapée vite, entité bien orthographiée, relation)
+"""
+
+QUESTIONS_TEST = [
+    ("tailande monaie", "Thaïlande", "monnaie"),
+    ("en pologne on paye avec koi", "Pologne", "monnaie"),
+    ("on parle quoi en iran", "Iran", "langue"),
+    ("madagaskar continent ?", "Madagascar", "continent"),
+    ("paragay c quel continent", "Paraguay", "continent"),
+    ("pop indonesie", "Indonésie", "population"),
+    ("nb habitants pakistant", "Pakistan", "population"),
+    ("tombouctu c dans quel pays", "Tombouctou", "pays"),
+    ("cracovie pays ?", "Cracovie", "pays"),
+    ("johanesburg ds quel pays", "Johannesburg", "pays"),
+    ("combien d hab a lyon", "Lyon", "population"),
+    ("population montpelier", "Montpellier", "population"),
+    ("charles de gaule né qd", "Charles de Gaulle", "naissance"),
+    ("date de naissance mandela", "Nelson Mandela", "naissance"),
+    ("van gog mort quand", "Vincent van Gogh", "décès"),
+    ("johnny halliday décédé le", "Johnny Hallyday", "décès"),
+    ("mort de louis 14", "Louis XIV", "décès"),
+    ("mozard né ou", "Wolfgang Amadeus Mozart", "lieu de naissance"),
+    ("napoleon ville natale", "Napoléon Ier", "lieu de naissance"),
+    ("la liberte guidant le peuple c de qui", "La Liberté guidant le peuple", "auteur"),
+    ("crime et chatiment ecrit par", "Crime et Châtiment", "auteur"),
+    ("qui a composé le sacre du printant", "Le Sacre du printemps", "compositeur"),
+    ("shinning realisé par qui", "Shining", "réalisateur"),
+    ("la haine film de qui", "La Haine", "réalisateur"),
+    ("candide publié quand", "Candide", "date"),
+    ("les visiteur sorti en quelle annee", "Les Visiteurs", "date"),
+    ("hauteur du mont fudji", "mont Fuji", "altitude"),
+    ("ventoux altitude", "mont Ventoux", "altitude"),
+    ("bataille de verdum debut", "bataille de Verdun", "début"),
+    ("guerre de coree commence quand", "guerre de Corée", "début"),
+    ("stalingrade fin de la bataille", "bataille de Stalingrad", "fin"),
+    ("addidas fondateur", "Adidas", "fondateur"),
+    ("qui a fondé rolex", "Rolex", "fondateur"),
+    ("nintendo créé en quelle annee", "Nintendo", "création"),
+    ("heiniken fondée en", "Heineken", "création"),
+    ("volswagen siege", "Volkswagen", "siège"),
+    ("nokia siège c ou", "Nokia", "siège"),
+]
+
+# Même origine, mais le fait a été appris BIEN ÉCRIT avec l'outil pendant
+# l'entraînement (data/sft/faits.json ou les réponses « outillées ») : Carl a
+# déjà vu la réponse. Compté à part, pour ne pas gonfler le chiffre principal.
+QUESTIONS_TEST_DEJA_VUES = [
+    ("c koi la capitale du marok", "Maroc", "capitale"),
+    ("kenia capitale ?", "Kenya", "capitale"),
+    ("capital australie", "Australie", "capitale"),
+    ("langue officielle etiopie", "Éthiopie", "langue"),
+    ("mongolie c sur quel continent", "Mongolie", "continent"),
+    ("don quichote auteur", "Don Quichotte", "auteur"),
+    ("les 4 saisons compositeur", "Les Quatre Saisons", "compositeur"),
+    ("realisateur amelie poulin", "Le Fabuleux Destin d'Amélie Poulain", "réalisateur"),
+    ("symbole du plom", "plomb", "symbole"),
+    ("potassium symbol", "potassium", "symbole"),
+    ("num atomique uranium", "uranium", "numéro atomique"),
+    ("azot numero atomique", "azote", "numéro atomique"),
+    ("guerre des 6 jours fin", "guerre des Six Jours", "fin"),
+]
+
+
+# Les bonnes réponses, figées (vérifiées à la main quand les questions ont été
+# écrites) : si elles venaient de faits.chercher à chaque passage, changer la
+# recherche changerait aussi la « vérité », et un bug de la base passerait
+# inaperçu (une réponse fausse notée juste parce que la base dit pareil).
+VERITES = {
+    ('Slovaquie', 'capitale'): 'Bratislava',
+    ('Albert Einstein', 'naissance'): '14 mars 1879',
+    ('Titanic', 'réalisateur'): 'James Cameron',
+    ('mont Blanc', 'altitude'): '4 806',
+    ('Marie Curie', 'lieu de naissance'): 'Varsovie',
+    ('Microsoft', 'fondateur'): 'Paul Allen et Bill Gates',
+    ('oxygène', 'symbole'): 'O',
+    ('Le Horla', 'auteur'): 'Guy de Maupassant',
+    ('Le Radeau de la Méduse', 'auteur'): 'Théodore Géricault',
+    ('Toulouse', 'population'): '514 819',
+    ('Molière', 'décès'): '17 février 1673',
+    ('Beyoncé', 'naissance'): '4 septembre 1981',
+    ('Amazon', 'siège'): 'Seattle',
+    ('Nietzsche', 'décès'): '25 août 1900',
+    ('Nantes', 'pays'): 'France',
+    ('Portugal', 'capitale'): 'Lisbonne',
+    ('Thaïlande', 'monnaie'): 'baht',
+    ('Pologne', 'monnaie'): 'złoty',
+    ('Iran', 'langue'): 'persan',
+    ('Madagascar', 'continent'): 'Afrique',
+    ('Paraguay', 'continent'): 'Amérique du Sud',
+    ('Indonésie', 'population'): '275 439 000',
+    ('Pakistan', 'population'): '223 773 700',
+    ('Tombouctou', 'pays'): 'Mali',
+    ('Cracovie', 'pays'): 'Pologne',
+    ('Johannesburg', 'pays'): 'Afrique du Sud',
+    ('Lyon', 'population'): '519 127',
+    ('Montpellier', 'population'): '310 240',
+    ('Charles de Gaulle', 'naissance'): '22 novembre 1890',
+    ('Nelson Mandela', 'naissance'): '18 juillet 1918',
+    ('Vincent van Gogh', 'décès'): '29 juillet 1890',
+    ('Johnny Hallyday', 'décès'): '5 décembre 2017',
+    ('Louis XIV', 'décès'): '1er septembre 1715',
+    ('Wolfgang Amadeus Mozart', 'lieu de naissance'): 'Salzbourg',
+    ('Napoléon Ier', 'lieu de naissance'): 'Ajaccio',
+    ('La Liberté guidant le peuple', 'auteur'): 'Eugène Delacroix',
+    ('Crime et Châtiment', 'auteur'): 'Fiodor Dostoïevski',
+    ('Le Sacre du printemps', 'compositeur'): 'Igor Stravinsky',
+    ('Shining', 'réalisateur'): 'Stanley Kubrick',
+    ('La Haine', 'réalisateur'): 'Mathieu Kassovitz',
+    ('Candide', 'date'): '1759',
+    ('Les Visiteurs', 'date'): '27 janvier 1993',
+    ('mont Fuji', 'altitude'): '3 777',
+    ('mont Ventoux', 'altitude'): '1 910',
+    ('bataille de Verdun', 'début'): '21 février 1916',
+    ('guerre de Corée', 'début'): '25 juin 1950',
+    ('bataille de Stalingrad', 'fin'): '2 février 1943',
+    ('Adidas', 'fondateur'): 'Adolf Dassler',
+    ('Rolex', 'fondateur'): 'Hans Wilsdorf',
+    ('Nintendo', 'création'): '23 septembre 1889',
+    ('Heineken', 'création'): '12 juillet 1864',
+    ('Volkswagen', 'siège'): 'Wolfsburg',
+    ('Nokia', 'siège'): 'Espoo',
+    ('Maroc', 'capitale'): 'Rabat',
+    ('Kenya', 'capitale'): 'Nairobi',
+    ('Australie', 'capitale'): 'Canberra',
+    ('Éthiopie', 'langue'): 'amharique',
+    ('Mongolie', 'continent'): 'Asie',
+    ('Don Quichotte', 'auteur'): 'Miguel de Cervantes',
+    ('Les Quatre Saisons', 'compositeur'): 'Antonio Vivaldi',
+    ("Le Fabuleux Destin d'Amélie Poulain", 'réalisateur'): 'Jean-Pierre Jeunet',
+    ('plomb', 'symbole'): 'Pb',
+    ('potassium', 'symbole'): 'K',
+    ('uranium', 'numéro atomique'): '92',
+    ('azote', 'numéro atomique'): '7',
+    ('guerre des Six Jours', 'fin'): '10 juin 1967',
+}

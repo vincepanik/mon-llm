@@ -99,7 +99,10 @@ def save_checkpoint(path: Path, model, optimizer, step: int, cfg: Config, best_v
 
 
 def load_checkpoint(path: Path, device: torch.device) -> dict:
-    ck = torch.load(path, map_location=device, weights_only=False)
+    # Chargé sur le CPU : le checkpoint du pré-entraînement contient aussi l'état
+    # de l'optimiseur (~1 Go), qui n'a rien à faire sur le GPU du Mac.
+    # load_state_dict copie ensuite les poids là où est le modèle.
+    ck = torch.load(path, map_location="cpu", weights_only=False)
     # Un modèle passé par torch.compile sauvegarde ses poids sous des noms
     # préfixés par "_orig_mod." : on les retire, pour pouvoir recharger le
     # checkpoint dans un modèle non compilé (sample.py, reprise avant compile).

@@ -54,7 +54,9 @@ def formater(x: float) -> str:
 
 def calculer(expression: str) -> str:
     """Évalue une expression arithmétique (+ - * / ^ % et parenthèses), rien d'autre."""
-    expr = expression.replace(",", ".").replace("^", "**").replace("×", "*").replace("x", "*").replace(":", "/")
+    # « 1 200 » à la française : les espaces entre groupes de trois chiffres disparaissent.
+    expr = re.sub(r"(?<=\d)[ \u00a0\u202f](?=\d{3}(?!\d))", "", expression)
+    expr = expr.replace(",", ".").replace("^", "**").replace("×", "*").replace("x", "*").replace(":", "/").replace("÷", "/")
     try:
         return formater(_eval(ast.parse(expr, mode="eval").body))
     except (ValueError, SyntaxError, ZeroDivisionError, OverflowError, TypeError):

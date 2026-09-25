@@ -14,6 +14,11 @@ Wikidata bien plus rapide que le service officiel, qui coupe au bout de 60 s
 et refuse les grosses requêtes. Les noms communs à toutes les langues
 (« Victor Hugo ») sont rangés sous la langue « mul », pas « fr » : on prend
 le français s'il existe, sinon « mul ».
+
+On garde aussi les autres noms de chaque entité (alias) : « Napoléon
+Bonaparte » pour Napoléon Ier, « Chine » pour la république populaire de
+Chine, « Van Gogh », « Hollande ». Sans eux, faits.py devait deviner à partir
+d'un morceau de nom, et se trompait (« Napoléon Bonaparte » -> son neveu).
 """
 
 from __future__ import annotations
@@ -56,7 +61,8 @@ CATEGORIES = {
     "entreprise": ("VALUES ?type { wd:Q4830453 wd:Q891723 wd:Q6881511 } ?e wdt:P31 ?type .", 2500,
                    {"fondateur": "P112", "création": "P571", "siège": "P159"}),
 }
-PREFIXES = """PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIXES = """PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX wd: <http://www.wikidata.org/entity/>
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX p: <http://www.wikidata.org/prop/>
 PREFIX psv: <http://www.wikidata.org/prop/statement/value/>
@@ -126,6 +132,21 @@ def requete(motif: str, combien: int, prop: str) -> str:
 }}"""
 
 
+def requete_alias(motif: str, combien: int) -> str:
+    return f"""{PREFIXES}SELECT ?e ?alias WHERE {{
+  {{ SELECT ?e ?liens WHERE {{ {motif} ?e wikibase:sitelinks ?liens . }} ORDER BY DESC(?liens) LIMIT {combien} }}
+  ?e skos:altLabel ?alias . FILTER(LANG(?alias) = "fr" || LANG(?alias) = "mul")
+}}"""
+
+
+def alias_utile(alias: str) -> bool:
+    """Pas les codes (« NL », « P.-B. », « PRC ») ni les écritures non latines."""
+    lettres = [c for c in alias if c.isalpha()]
+    if len(lettres) < 4 or (alias.isupper() and len(alias) <= 5):
+        return False
+    return all(c.isascii() or "À" <= c <= "ž" for c in lettres)
+
+
 def texte(ligne: dict, variable: str) -> str | None:
     for langue in ("fr", "mul"):
         if f"{variable}_{langue}" in ligne:
@@ -166,6 +187,21 @@ def main() -> None:
                 if val not in faits[qid][relation]:
                     faits[qid][relation].append(val)
             print(f"  {categorie:<10} {relation:<17} {len(lignes):>6} lignes  ({time.time() - debut:.0f} s)", flush=True)
+        cache = CACHE / f"{categorie}_alias.json"
+        if cache.exists():
+            lignes = json.loads(cache.read_text(encoding="utf-8"))
+        else:
+            lignes = sparql(requete_alias(motif, combien))
+            cache.write_text(json.dumps(lignes, ensure_ascii=False), encoding="utf-8")
+            time.sleep(2)
+        n_alias = 0
+        for l in lignes:
+            qid, alias = l["e"]["value"].rsplit("/", 1)[1], l["alias"]["value"]
+            if qid in entites and alias_utile(alias) and alias != entites[qid]["nom"]:
+                if alias not in entites[qid].setdefault("alias", []):
+                    entites[qid]["alias"].append(alias)
+                    n_alias += 1
+        print(f"  {categorie:<10} {'(alias)':<17} {n_alias:>6} gardés", flush=True)
     SORTIE.parent.mkdir(parents=True, exist_ok=True)
     SORTIE.write_text(json.dumps({"entites": entites, "faits": faits}, ensure_ascii=False), encoding="utf-8")
     n = sum(len(v) for f in faits.values() for v in f.values())

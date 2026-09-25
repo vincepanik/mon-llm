@@ -9,8 +9,9 @@ complète « Madrid] », puis Carl recopie le résultat dans une phrase :
 
     [fait: Espagne | capitale = Madrid] La capitale de l'Espagne est Madrid.
 
-Aucune entité citée dans une question de l'examen (examen.py) ni dans
-examen_faits.py : on mesure s'il a appris le réflexe, pas les réponses.
+Aucune entité citée dans une question de l'examen (examen.py), de
+examen_faits.py ou de son jeu de test (examen_faits_test.py) : on mesure s'il
+a appris le réflexe, pas les réponses.
 
 Une question sur trois est « tapée vite » : fautes de frappe, sans accents ni
 majuscules, style télégraphique (« capital du portigal ? »). Carl v10, qui
@@ -31,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import faits  # noqa: E402
 from examen import FAITS  # noqa: E402
 from examen_faits import QUESTIONS as JAMAIS_VUES, QUESTIONS_VITE  # noqa: E402
+from examen_faits_test import QUESTIONS_TEST  # noqa: E402
 
 R = random.Random(2026)
 MOIS = set("janvier février mars avril mai juin juillet août septembre octobre novembre décembre".split())
@@ -236,7 +238,7 @@ def a_lieu(nom: str) -> str:
 
 def interdits_examen() -> set[str]:
     return ({faits.normaliser(q) for q, _, _ in FAITS}
-            | {faits.normaliser(e) for _, e, _ in JAMAIS_VUES + QUESTIONS_VITE})
+            | {faits.normaliser(e) for _, e, _ in JAMAIS_VUES + QUESTIONS_VITE + QUESTIONS_TEST})
 
 
 def cite_dans_examen(nom: str, questions: set[str]) -> bool:

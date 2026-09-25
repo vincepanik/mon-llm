@@ -1,5 +1,7 @@
 # Feuille de route pour Carl (septembre 2026)
 
+> **État (25 septembre 2026)** : actions 1 (réparer la mesure) et 2 (réparer le chemin vers l'outil) faites ; voir la section « Réparer la mesure, puis le chemin vers l'outil » du README. Prochaine : l'action 3 (un SFT v12 bien mesuré).
+
 *Produite par 69 agents (10 explorateurs, fusion, un vérificateur sceptique par proposition, synthèse, critique), en lecture seule sur le dépôt. 81 propositions brutes, 56 après fusion, 46 retenues. Correction depuis : la perte des dates (92 %) et la coupure à 5 Go sont vérifiées et reportées dans le README.*
 
 **Vue d'ensemble.** Ton gros modèle va bien. Ce qui coince surtout, c'est la tuyauterie autour : la règle qui décide ce que Carl voit de la conversation, la recherche dans la base de faits et la notation des examens. On peut presque tout réparer sur le Mac, sans GPU et sans argent. Les chantiers payants n'ont de sens que si tu décides un jour de refaire un pré-entraînement.

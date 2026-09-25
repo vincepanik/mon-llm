@@ -368,6 +368,103 @@ une seule vraie perte (Everest -> « Elbrouz, en Iran »), dans le bruit d'un
 entraînement à l'autre. Restent ratés : « slovaki » et « nietzche », trop loin
 de l'orthographe pour la recherche floue de la base.
 
+Correction (section suivante) : ce 12/15 était optimiste, car une partie des
+questions « tapées vite » reprenaient mot pour mot des gabarits
+d'entraînement. Sur un vrai jeu de test, écrit à l'aveugle : 20/37 (v10 : 9/37).
+
+### Réparer la mesure, puis le chemin vers l'outil (septembre 2026)
+
+Une équipe d'agents a relu tout le projet (`docs/feuille_de_route.md`) : le
+modèle allait bien, mais la mesure et la tuyauterie autour de l'outil étaient
+fausses par endroits. D'abord la mesure, pour ne pas régler les corrections
+sur les questions qui servent à les juger.
+
+**La mesure.**
+- `notation.py` : notation en mot entier, sans les appels d'outils, sans
+  accents, sur le début de la réponse. L'ancienne comptait juste « Napoléon
+  III » (premier empereur), « 577 millions de continents » ou « le trioxyde
+  d'or ». La conduite est notée sur « n'invente pas l'heure ou la météo », pas
+  sur une liste de tournures d'excuse.
+- Des fuites vers l'entraînement, trouvées par `tests/test_fuite_examen.py` :
+  « Qui a peint la Joconde ? » ou « Quelle est la capitale du Canada ? »
+  étaient mot pour mot dans compar:IA et oasst, « 37 au carré », « 12 fois 12 »
+  et « 1+2 » dans les calculs, et « Madame Bovary », « Guernica » (du test des
+  faits « jamais vus ») dans les conversations de l'étape D. Questions
+  reformulées ou remplacées : c'est l'examen « v2 », dont les scores ne se
+  comparent pas à ceux d'avant.
+- Chaque réponse est gardée (`resultats/`, `python examen.py --renoter`) et
+  `comparer.py` liste les questions gagnées et perdues entre deux versions,
+  avec l'intervalle de confiance : 27/40 veut dire « entre 52 et 80 % ».
+- `examen_conversation.py` : 11 conversations notées tour par tour (salut puis
+  question, relance, merci puis relance) : l'examen posait chaque question
+  seule, les bugs de mémoire y étaient invisibles.
+- `examen_faits_test.py` : 50 questions tapées vite écrites par un agent qui
+  n'avait pas vu les gabarits d'entraînement, réponses figées (vérifiées à
+  l'écriture, et non recalculées par la base à chaque passage). 37 portent sur
+  des faits jamais appris (le chiffre qui compte), 13 sur des faits vus bien
+  écrits. Réserve : je les ai lues en les enregistrant ; ce jeu n'est plus
+  parfaitement aveugle pour la recherche de faits.
+
+| examen v2 | nom | créateur | savoirs | conduite | calcul |
+|---|---|---|---|---|---|
+| Carl v8 | 9/10 | 8/10 | 20/40 | 4/4 | 10/10 |
+| Carl v10 | 9/10 | 8/10 | 25/40 | 4/4 | 10/10 |
+| Carl v11 | 8/10 | 8/10 | 24/40 | 4/4 | 10/10 |
+
+**Le chemin vers l'outil**, sans réentraîner Carl.
+- `chat.py` : toute question de trois mots ou moins passait pour une relance,
+  et Carl voyait l'échange précédent, souvent un simple « Hello Carl ! » ;
+  « ou est nee marie curie » aussi (« ou » pris pour une relance). Une question
+  courte n'est plus une relance que si elle ne nomme rien (« et où ? ») ou
+  renvoie à ce qui précède (« sa population ? », « où est-il né ? ») ; la
+  mémoire saute les politesses (« merci ! » entre deux questions) ; la pénalité
+  de répétition ne porte plus sur les appels d'outils ; une réponse trop longue
+  s'arrête à la dernière phrase complète.
+- `faits.py`, réécrit. L'ancienne recherche répondait à presque tout : « Lune »
+  -> la sortie de Transformers 3, « Napoléon Bonaparte » -> son neveu,
+  « Kennedy » -> un inconnu, « Waterloo » -> la chanson d'ABBA, « Dordogne »
+  -> un village. Principe : ne répondre que si l'identification est nette,
+  sinon se taire (Carl répond alors de mémoire, comme sans outil). Les alias
+  Wikidata (66 000 autres noms : « Chine », « Mona Lisa », « Napoléon
+  Bonaparte ») ont été ajoutés à la base. Trois relectures successives par des
+  agents (140 au total, chaque bogue signalé soumis à deux sceptiques) ont
+  confirmé 41 bogues : 40 corrigés (les cas sont dans `tests/test_faits.py`),
+  le dernier, des entités célèbres absentes de la base, est un chantier de
+  données.
+
+| banc de la recherche de faits | avant | après |
+|---|---|---|
+| cas relevés par les relectures (91) | 58 | 91 |
+| 600 personnes célèbres, nom mal tapé : juste / faux | 581 / 9 | 583 / 1 |
+| nom de famille seul : réponses fausses | 45 | 7 |
+| nom de famille mal tapé : juste / faux | 26 / 40 | 254 / 15 |
+| « prénom nom » absents de la base : réponses inventées | 58 / 461 | 4 / 461 |
+| régions et départements absents : réponses inventées | 11 / 20 | 2 / 20 |
+
+Les noms vraiment ambigus se taisent : « Clinton » (Bill ou Hillary ?),
+« Bush », « François Ier » (trois souverains de même notoriété).
+
+| Carl v11 | avant | après |
+|---|---|---|
+| examen v2 | 24/40 | 24/40 (aucune question gagnée ni perdue) |
+| conversations (tours justes) | 20/25 | 21/25 |
+| faits tapés vite, TEST (jamais vus) | 20/37 | 22/37 |
+| faits tapés vite, déjà vus bien écrits | 8/13 | 12/13 |
+
+La plupart des échecs restants au test ne viennent plus de la recherche : Carl
+n'appelle pas l'outil (« shinning realisé par qui » -> « je ne peux pas… »)
+ou choisit la mauvaise relation (« napoleon ville natale » -> la date de
+naissance). C'est à l'entraînement de les corriger (prochain SFT). Et la base
+a ses propres trous et erreurs (Los Angeles, Moïse ou la catastrophe de
+Tchernobyl manquent ; Séville est rangée aux États-Unis, Hastings en 1187) :
+un chantier de données.
+
+    python examen.py checkpoints/carl_v10/best.pt checkpoints/carl_v11/best.pt
+    python comparer.py resultats/carl_v10.jsonl resultats/carl_v11.jsonl
+    python examen_conversation.py checkpoints/carl_v11/best.pt
+    python examen_faits.py -q checkpoints/carl_v11/best.pt
+    python -m pytest -q tests
+
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 
 Le même Carl (nom, créateur, intentions) greffé sur Gemma 4 E4B (Google,

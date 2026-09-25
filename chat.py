@@ -53,9 +53,35 @@ def avec_document(messages: list[dict]) -> list[dict]:
     return messages[:-1] + [{"role": "document", "content": trouves[0][0]}, messages[-1]]
 
 
-# Débuts de phrase qui font d'une question la suite de la précédente.
-RELANCE = re.compile(r"^\s*(et|mais|alors|donc|pourquoi|comment ça|c'est-à-dire|ou|sinon|ok et|d'accord et)\b", re.I)
-POLITESSES = set("merci beaucoup bonjour bonsoir salut coucou hello ok d accord au revoir bonne nuit super génial parfait top".split())
+# Débuts de phrase qui font d'une question la suite de la précédente. Pas
+# « ou » : sans accent, c'est souvent « où » tapé vite (« ou est nee marie
+# curie »), une question complète.
+RELANCE = re.compile(r"^\s*(et|mais|alors|donc|pourquoi|comment ça|c'est-à-dire|sinon|ok et|d'accord et)\b", re.I)
+POLITESSES = set("""merci beaucoup bien infiniment bonjour bonsoir salut coucou hello hey ok okay d accord au revoir
+    bonne nuit journée soirée super génial parfait top cool sympa bravo excellent nickel vu compris oui non ça va""".split())
+# Une question courte n'est une relance que si elle ne nomme rien : « pourquoi
+# ? », « en quelle année ? », « et où ? ». « nantes pays ? » ou « population
+# lyon » se suffisent à elles-mêmes ; avant, toute question de trois mots ou
+# moins voyait l'échange précédent, souvent un simple « Hello Carl ! ».
+SANS_SUJET = set("""et ou où quand pourquoi comment combien qui quoi que quel quelle quels quelles lequel laquelle
+    en de du des la le les l d à a au aux est c ça ca il elle ils elles y t alors donc sinon année an ans date lieu
+    depuis né née mort morte âge age habitants population superficie taille altitude capitale monnaie langue
+    auteur réalisateur fondateur prix""".split())
+# « sa population ? », « son âge ? », « où est-il né ? », « qui l'a écrit ? » :
+# un possessif ou un pronom renvoie forcément à ce qui précède, même si la
+# question nomme autre chose. Un pronom seulement à sa place de pronom : en tête
+# de question, ou en minuscules (« qui a réalisé Elle ? » parle du film).
+RENVOI = re.compile(r"\b(sa|son|ses|leur|leurs|celui|celle|ceux|celui-ci|celle-ci)\b|\bl'(a|ont|avait|avaient)\b", re.I)
+PRONOM = re.compile(r"(?:^|[\s-])(il|ils|elle|elles|lui|eux)(?=[\s?!.,-]|$)")
+IMPERSONNEL = re.compile(r"\b(y a-t-il|heure est-il|fait-il|il y a|il faut|il pleut|il fait|s'il)\b", re.I)
+
+
+def renvoie(question: str) -> bool:
+    texte = question.strip()
+    if IMPERSONNEL.search(texte):
+        texte = IMPERSONNEL.sub(" ", texte)
+    en_tete = re.match(r"(il|ils|elle|elles|lui|eux)\b", texte, re.I)
+    return bool(RENVOI.search(texte) or PRONOM.search(texte) or en_tete)
 A_CARL = re.compile(r"\b(tu|te|toi|ton|ta|tes|vous|votre|vos|carl)\b|\bt'|\bt’", re.I)
 
 
@@ -71,14 +97,33 @@ def est_relance(question: str) -> bool:
     mots = re.findall(r"\w+", question.lower())
     if mots and all(m in POLITESSES for m in mots):  # « merci », « bonjour », « ok »...
         return False
-    return bool(RELANCE.match(question)) or len(mots) <= 3
+    courte = len(mots) <= 3 and all(m in SANS_SUJET for m in mots)
+    return bool(RELANCE.match(question)) or courte or (len(mots) <= 5 and renvoie(question))
+
+
+def politesse(message: str) -> bool:
+    """« Hello Carl ! », « merci ! », « ok » : rien à quoi une relance puisse se rattacher."""
+    mots = re.findall(r"\w+", message.lower())
+    return all(m in POLITESSES or m == "carl" for m in mots)
 
 
 def a_montrer(messages: list[dict], memoire: int | None) -> list[dict]:
-    """Ce que Carl voit de la conversation : la question, plus l'échange d'avant pour une relance."""
-    if memoire is None:
-        memoire = 1 if len(messages) >= 3 and est_relance(messages[-1]["content"]) else 0
-    return messages[-(2 * memoire + 1):]
+    """
+    Ce que Carl voit de la conversation : la question, plus, pour une relance,
+    le dernier vrai échange. Les politesses sont sautées : dans « Quelle
+    langue en Argentine ? » / « merci ! » / « Et au Brésil ? », la relance porte
+    sur la langue, pas sur le merci.
+    """
+    if memoire is not None:
+        return messages[-(2 * memoire + 1):]
+    if len(messages) < 3 or not est_relance(messages[-1]["content"]):
+        return messages[-1:]
+    for i in range(len(messages) - 3, -1, -2):  # les questions précédentes, de la plus récente
+        # « tu es sûr ? » non plus : une question à Carl ne donne pas de sujet à une relance.
+        texte = messages[i]["content"]
+        if messages[i]["role"] == "user" and not politesse(texte) and not A_CARL.search(texte):
+            return messages[i : i + 2] + messages[-1:]
+    return messages[-1:]
 
 
 def trigrammes_interdits(reponse: list[int], n: int = 3) -> list[int]:
@@ -164,7 +209,9 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
     fin = tok.special_tokens["<|im_end|>"]
     # Ses propres réponses précédentes : un petit modèle a tendance à les
     # recopier mot pour mot, et une réponse ratée se répète alors en boucle.
-    precedentes = [t for m in messages if m["role"] == "assistant" for t in tok.encode(m["content"])]
+    # Sans les appels d'outils : pénaliser le « [ » de « [fait: ... » d'une
+    # réponse précédente décourageait Carl d'appeler l'outil pour une relance.
+    precedentes = [t for m in messages if m["role"] == "assistant" for t in tok.encode(afficher(m["content"]))]
     reponse: list[int] = []
     # Après un fait, Carl recopie le résultat (« Saint-Exupéry ») : ni la
     # pénalité ni le blocage des trigrammes ne doivent porter sur l'appel.
@@ -214,7 +261,19 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
                         debut -= 1
                     del reponse[debut:]
                     sans_outil = True
+    else:  # plus de place : on coupe à la dernière phrase complète, pas au milieu d'un mot
+        return couper(tok.decode(reponse).strip())
     return tok.decode(reponse).strip()
+
+
+def couper(texte: str) -> str:
+    """« Il a dit. Puis il est par » -> « Il a dit. » ; sans phrase complète : « ... par… »."""
+    if texte.rstrip().endswith((".", "!", "?", "…")) and not dans_un_calcul(texte):
+        return texte  # la dernière phrase est finie : rien à couper
+    fin = max(texte.rfind(p) for p in (". ", "! ", "? ", ".\n", "!\n", "?\n"))
+    if fin >= len(texte) * 0.4 and not dans_un_calcul(texte[: fin + 1]):
+        return texte[: fin + 1]
+    return texte if texte.endswith((".", "!", "?", "…")) else texte + "…"
 
 
 MOIS = "janvier février mars avril mai juin juillet août septembre octobre novembre décembre".split()
@@ -231,6 +290,10 @@ class Journal:
         maintenant = datetime.now()
         dossier.mkdir(parents=True, exist_ok=True)
         self.chemin = dossier / maintenant.strftime("%Y-%m-%d_%Hh%M.md")
+        n = 2
+        while self.chemin.exists():  # deux sessions la même minute : ne pas écraser la première
+            self.chemin = dossier / maintenant.strftime(f"%Y-%m-%d_%Hh%M_{n}.md")
+            n += 1
         date = f"{maintenant.day} {MOIS[maintenant.month - 1]} {maintenant.year}, {maintenant:%H} h {maintenant:%M}"
         options = ", ".join(f"{k} {v}" for k, v in reglages.items())
         self.chemin.write_text(
