@@ -1,6 +1,6 @@
 # Feuille de route pour Carl (septembre 2026)
 
-> **État (25 septembre 2026)** : actions 1 (réparer la mesure) et 2 (réparer le chemin vers l'outil) faites ; voir la section « Réparer la mesure, puis le chemin vers l'outil » du README. Prochaine : l'action 3 (un SFT v12 bien mesuré).
+> **État (25 septembre 2026)** : actions 1 (réparer la mesure) et 2 (réparer le chemin vers l'outil) faites ; voir la section « Réparer la mesure, puis le chemin vers l'outil » du README. Action 3 faite aussi : Carl v13 (section « Carl v12 et v13 » du README).
 
 *Produite par 69 agents (10 explorateurs, fusion, un vérificateur sceptique par proposition, synthèse, critique), en lecture seule sur le dépôt. 81 propositions brutes, 56 après fusion, 46 retenues. Correction depuis : la perte des dates (92 %) et la coupure à 5 Go sont vérifiées et reportées dans le README.*
 

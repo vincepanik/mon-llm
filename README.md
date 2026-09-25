@@ -94,7 +94,7 @@ seule par défaut (`--memoire 0`).
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
         --epochs 2 --out checkpoints/carl
-    python chat.py --checkpoint checkpoints/carl_v11/best.pt
+    python chat.py --checkpoint checkpoints/carl_v13/best.pt
 
 ### Niveau 1 : Carl de 125M avec compar:IA, puis DPO
 
@@ -173,7 +173,7 @@ fait oublier des faits. La recherche est donc désactivée par défaut
     python sft.py --checkpoint checkpoints/carl_v5/best.pt \
         --data data/sft/lecture.json data/sft/comparia_reparation.json data/sft/conversations.json data/sft/calculs.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v6
-    python chat.py --checkpoint checkpoints/carl_v11/best.pt
+    python chat.py --checkpoint checkpoints/carl_v13/best.pt
 
 ### Génération de Carl : relances, boucles, longueur
 
@@ -229,7 +229,7 @@ connaissances viennent du pré-entraînement.
         --data data/sft/claude.json data/sft/claude.json data/sft/claude.json data/sft/calculs.json \
                data/sft/comparia_2000.json data/sft/conversations.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v8
-    python chat.py --checkpoint checkpoints/carl_v11/best.pt
+    python chat.py --checkpoint checkpoints/carl_v13/best.pt
 
 ### Étape E : une base de faits Wikidata (Carl v10)
 
@@ -274,7 +274,7 @@ année ») : l'outil ne sait que ce qu'on y a mis.
                data/sft/comparia_2000_outils.json data/sft/conversations_outils.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v10
     python examen_faits.py checkpoints/carl_v8/best.pt checkpoints/carl_v10/best.pt
-    python chat.py --checkpoint checkpoints/carl_v11/best.pt
+    python chat.py --checkpoint checkpoints/carl_v13/best.pt
 
 ### Étape F : recherche par le sens dans Wikipédia
 
@@ -464,6 +464,58 @@ un chantier de données.
     python examen_conversation.py checkpoints/carl_v11/best.pt
     python examen_faits.py -q checkpoints/carl_v11/best.pt
     python -m pytest -q tests
+
+### Carl v12 et v13 : un SFT regroupé, les débuts et fins de conversation
+
+Un seul entraînement (depuis v8, 9 min) pour toutes les corrections de
+données, chacune venue d'un défaut mesuré ou vu en vrai :
+- `chat_format.py` : Carl n'apprend plus à écrire le résultat d'un outil
+  (« Madrid] », « 391] »), que le programme insère : 17 à 20 % des tokens
+  corrigés des données de faits et de calcul lui apprenaient à deviner des
+  valeurs qu'il n'écrit jamais. Découpage identique à l'usage.
+- `data/faits_sft.py` régénéré avec la nouvelle recherche, élisions corrigées
+  (« d'Adele », « au Pecq »).
+- `data/style.py` : de compar:IA et oasst, seules les réponses courtes, sans
+  listes ni gras, au tutoiement (130 conversations compar:IA sur 2 000), et pas
+  de question pour la base de faits répondue de mémoire (elle apprenait à
+  sauter l'outil). En vrai, Carl répondait par des listes bancales (« 8. »
+  coupé, « soupe de légumes aux légumes ») et passait du « tu » au « vous ».
+- `data/politesses.py` : débuts et fins de conversation (« merci », « bonnes
+  idées, merci ! », « au revoir », « salut, j'ai une question », « t'es là ? »).
+  Carl répondait à un merci en se représentant (« Je suis Carl. Que puis-je
+  faire pour toi ? »). v13 ajoute des saluts suivis d'une demande et des
+  « salut » d'au revoir : v12 prenait « Bonsoir, j'aurais besoin d'un coup de
+  main » pour une fin (« bonne continuation ! »).
+- `examen_style.py` : 8 ouvertures, 8 clôtures, 8 demandes ouvertes, jamais vues.
+
+Chaque version entraînée avec deux graines : l'écart entre les deux mesure le
+hasard de l'entraînement (jusqu'à 2 points en savoirs).
+
+| | v11 | v12 | v12 (graine 2) | **v13** | v13 (graine 2) |
+|---|---|---|---|---|---|
+| examen : nom / créateur / savoirs | 8 / 8 / 24 | 9 / 8 / 26 | 10 / 9 / 28 | **9 / 9 / 27** | 9 / 9 / 27 |
+| conduite / calcul | 4 / 10 | 4 / 10 | 4 / 10 | 4 / 10 | 4 / 10 |
+| conversations (tours justes /25) | 21 | 22 | 22 | **22** | 21 |
+| faits tapés vite, test (/37) | 22 | 24 | 23 | **21** | 23 |
+| ouvertures (/8) | 7 | 5 | 6 | **7** | 7 |
+| clôtures (/8) | 3 | 7 | 7 | **6** | 6 |
+| longueur moyenne (demandes ouvertes) | 250 | 204 | 148 | 270 | 230 |
+
+v13 devient la version par défaut : clôtures bien meilleures sans perdre les
+ouvertures, et rien ne recule au-delà du bruit entre graines (les faits tapés
+vite : 21 et 23 pour v13, 24 et 23 pour v12). Restent les vraies ambiguïtés
+(« Bon, j'y vais. Salut ! » pris pour un bonjour) et des réponses
+générales encore faibles (« Que faut-il pour un gâteau au chocolat ? ») : à
+125M, le fond vient du pré-entraînement.
+
+    python data/faits_sft.py && python data/politesses.py
+    python data/style.py data/sft/comparia_2000_outils.json data/sft/conversations_outils.json data/sft/claude_outils.json
+    python sft.py --checkpoint checkpoints/carl_v8/best.pt \
+        --data data/sft/faits.json data/sft/claude_outils_style.json data/sft/claude_outils_style.json \
+               data/sft/calculs.json data/sft/comparia_2000_outils_style.json data/sft/conversations_outils_style.json \
+               data/sft/politesses.json data/sft/politesses.json \
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v13
+    python examen_style.py checkpoints/carl_v11/best.pt checkpoints/carl_v13/best.pt
 
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 

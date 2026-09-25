@@ -46,7 +46,10 @@ def conversations():
 
 
 def test_aucune_question_d_examen_dans_l_entrainement():
-    questions = {norm(q): q for q in TESTS} | {norm(q): q for _, jeu in jeux() for q, _, _ in jeu}
+    from examen_style import CLOTURES, OUVERTES, OUVERTURES
+
+    questions = ({norm(q): q for q in TESTS} | {norm(q): q for _, jeu in jeux() for q, _, _ in jeu}
+                 | {norm(q): q for q in OUVERTURES + CLOTURES + OUVERTES})
     fuites = set()
     for f, conv in conversations():
         for m in conv:

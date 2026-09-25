@@ -52,3 +52,18 @@ def test_dpo_logp_ne_compte_que_la_reponse():
     logits, _ = m(torch.tensor([seq]), torch.tensor([seq]))
     lp = torch.log_softmax(logits[0], -1)
     assert torch.allclose(seul[0], lp[2, 8] + lp[3, 9], atol=1e-5)
+
+
+def test_resultat_d_outil_pas_appris():
+    """« Madrid] » est inséré par le programme : Carl n'apprend pas à le deviner, mais tout le reste, si."""
+    from chat_format import IGNORE, encoder_conversation
+    from tokenizer import BPETokenizer
+
+    tok = BPETokenizer.load("tokenizer/vocab.json")
+    conv = [{"role": "user", "content": "Capitale de l'Espagne ?"},
+            {"role": "assistant", "content": "[fait: Espagne | capitale = Madrid] La capitale de l'Espagne est Madrid."}]
+    ids, cibles = encoder_conversation(tok, conv)
+    appris = tok.decode([c for c in cibles if c != IGNORE and c < tok.special_tokens["<|im_start|>"]])
+    assert appris == "[fait: Espagne | capitale = La capitale de l'Espagne est Madrid."
+    # Même découpage qu'à l'usage : chat.py ajoute tok.encode(" Madrid]") après « = ».
+    assert tok.encode(" Madrid]") == ids[ids.index(tok.encode(" =")[0]) + 1:][:len(tok.encode(" Madrid]"))]

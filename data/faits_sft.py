@@ -97,6 +97,24 @@ def en(article: str, nom: str) -> str:
     return f"en {nom}"
 
 
+def de_nom(nom: str) -> str:
+    """« d'Adele », « du Pecq », « de Victor Hugo » : pas « de Adele » ni « de Le Pecq »."""
+    if nom.startswith("Le "):
+        return "du " + nom[3:]
+    if nom.startswith("Les "):
+        return "des " + nom[4:]
+    return f"d'{nom}" if nom.startswith(VOYELLES) else f"de {nom}"
+
+
+def a_nom(nom: str) -> str:
+    """« au Pecq », « aux Lilas », « à Rome »."""
+    if nom.startswith("Le "):
+        return "au " + nom[3:]
+    if nom.startswith("Les "):
+        return "aux " + nom[4:]
+    return f"à {nom}"
+
+
 def maj(texte: str) -> str:
     return texte[:1].upper() + texte[1:]
 
@@ -179,16 +197,16 @@ GABARITS = {
                                        lambda g, v: f"{g['X']} est né{g['e']} {a_lieu(v)}."),
     ("livre", "auteur"): (["Qui a écrit {X} ?", "Qui est l'auteur de {X} ?", "{X}, c'est de qui ?",
                           "De qui est le livre {X} ?", "Qui a écrit le livre {X} ?"],
-                         lambda g, v: f"{g['X']} est une œuvre de {v}."),
+                         lambda g, v: f"{g['X']} est une œuvre {de_nom(v)}."),
     ("livre", "date"): (["Quand a été publié {X} ?", "En quelle année est paru {X} ?", "{X} date de quand ?"],
                        lambda g, v: f"{g['X']} a paru {quand(v)}."),
     ("tableau", "auteur"): (["Qui a peint {X} ?", "Qui est l'auteur du tableau {X} ?", "De qui est le tableau {X} ?",
                             "Quel peintre a réalisé {X} ?"],
-                           lambda g, v: f"{g['X']} est une œuvre de {v}."),
+                           lambda g, v: f"{g['X']} est une œuvre {de_nom(v)}."),
     ("tableau", "date"): (["Quand a été peint {X} ?", "En quelle année a été peint le tableau {X} ?"],
                          lambda g, v: f"{g['X']} date de {v}."),
     ("musique", "compositeur"): (["Qui a composé {X} ?", "Qui est le compositeur de {X} ?", "{X}, c'est de qui ?"],
-                                lambda g, v: f"{g['X']} est une œuvre de {v}."),
+                                lambda g, v: f"{g['X']} est une œuvre {de_nom(v)}."),
     ("film", "réalisateur"): (["Qui a réalisé {X} ?", "Qui est le réalisateur du film {X} ?",
                               "Le film {X}, c'est de qui ?", "Qui a fait le film {X} ?"],
                              lambda g, v: f"Le film {g['X']} a été réalisé par {v}."),
@@ -214,7 +232,7 @@ GABARITS = {
                                  "{X} existe depuis quand ?"],
                                 lambda g, v: f"L'entreprise {g['X']} a été créée {quand(v)}."),
     ("entreprise", "siège"): (["Où se trouve le siège de {X} ?", "Où est basée l'entreprise {X} ?"],
-                             lambda g, v: f"Le siège de {g['X']} se trouve à {v}."),
+                             lambda g, v: f"Le siège {de_nom(g['X'])} se trouve {a_nom(v)}."),
 }
 # Part de chaque catégorie dans les conversations.
 POIDS = {"pays": 0.22, "personne": 0.24, "ville": 0.1, "livre": 0.08, "tableau": 0.04, "musique": 0.04,
@@ -233,7 +251,7 @@ def a_lieu(nom: str) -> str:
     """« à Rome », mais « au Japon » quand le lieu est un pays."""
     entites, _, index = faits._base()
     est_un_pays = any(entites[q]["type"] == "pays" for q in index.get(faits.normaliser(nom), []))
-    return pays_en(nom) if est_un_pays else f"à {nom}"
+    return pays_en(nom) if est_un_pays else a_nom(nom)
 
 
 def interdits_examen() -> set[str]:
