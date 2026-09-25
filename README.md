@@ -94,7 +94,7 @@ seule par défaut (`--memoire 0`).
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
         --epochs 2 --out checkpoints/carl
-    python chat.py --checkpoint checkpoints/carl_v10/best.pt
+    python chat.py --checkpoint checkpoints/carl_v11/best.pt
 
 ### Niveau 1 : Carl de 125M avec compar:IA, puis DPO
 
@@ -173,7 +173,7 @@ fait oublier des faits. La recherche est donc désactivée par défaut
     python sft.py --checkpoint checkpoints/carl_v5/best.pt \
         --data data/sft/lecture.json data/sft/comparia_reparation.json data/sft/conversations.json data/sft/calculs.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v6
-    python chat.py --checkpoint checkpoints/carl_v10/best.pt
+    python chat.py --checkpoint checkpoints/carl_v11/best.pt
 
 ### Génération de Carl : relances, boucles, longueur
 
@@ -229,7 +229,7 @@ connaissances viennent du pré-entraînement.
         --data data/sft/claude.json data/sft/claude.json data/sft/claude.json data/sft/calculs.json \
                data/sft/comparia_2000.json data/sft/conversations.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v8
-    python chat.py --checkpoint checkpoints/carl_v10/best.pt
+    python chat.py --checkpoint checkpoints/carl_v11/best.pt
 
 ### Étape E : une base de faits Wikidata (Carl v10)
 
@@ -274,7 +274,7 @@ année ») : l'outil ne sait que ce qu'on y a mis.
                data/sft/comparia_2000_outils.json data/sft/conversations_outils.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v10
     python examen_faits.py checkpoints/carl_v8/best.pt checkpoints/carl_v10/best.pt
-    python chat.py --checkpoint checkpoints/carl_v10/best.pt
+    python chat.py --checkpoint checkpoints/carl_v11/best.pt
 
 ### Étape F : recherche par le sens dans Wikipédia
 
@@ -342,6 +342,27 @@ formes, au pré-entraînement plutôt qu'en questions-réponses.
                data/sft/faits.json data/sft/claude_outils.json data/sft/calculs.json data/sft/conversations_outils.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 2 --lr 3e-5 --out checkpoints/carl_exp
     python experience_faits.py checkpoints/carl_v10/best.pt checkpoints/carl_exp/best.pt
+
+### Carl v11 : les questions « tapées vite »
+
+En vrai, « Capital du Portigal ? » : v10 n'appelait pas sa base (il n'avait vu
+que des questions bien écrites) et inventait un véhicule électrique. v11 : un
+tiers des questions de `data/faits_sft.py` sont tapées vite (fautes de frappe
+dans le nom, sans accents ni majuscules, style télégraphique : « romeul lukaku
+né quand », « continent moldavei »), la faute n'étant gardée que si la base
+retrouve quand même la bonne réponse. Même recette que v10, 20 min.
+
+| `examen_faits.py` | bien écrites | tapées vite |
+|---|---|---|
+| Carl v10 | 15/15 | 5/15 |
+| **Carl v11** | **15/15** | **12/15** |
+
+À l'examen, v11 a 24/40 en savoirs contre 27 pour v10, mais deux des
+« pertes » étaient des réponses fausses que la notation par sous-chaîne
+comptait justes chez v10 (« Napoléon III », « 577 millions de continents ») ;
+une seule vraie perte (Everest -> « Elbrouz, en Iran »), dans le bruit d'un
+entraînement à l'autre. Restent ratés : « slovaki » et « nietzche », trop loin
+de l'orthographe pour la recherche floue de la base.
 
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 

@@ -9,8 +9,13 @@ complète « Madrid] », puis Carl recopie le résultat dans une phrase :
 
     [fait: Espagne | capitale = Madrid] La capitale de l'Espagne est Madrid.
 
-Aucune entité citée dans une question de l'examen (examen.py) : on mesure
-s'il a appris le réflexe, pas s'il a appris les réponses.
+Aucune entité citée dans une question de l'examen (examen.py) ni dans
+examen_faits.py : on mesure s'il a appris le réflexe, pas les réponses.
+
+Une question sur trois est « tapée vite » : fautes de frappe, sans accents ni
+majuscules, style télégraphique (« capital du portigal ? »). Carl v10, qui
+n'avait vu que des questions bien écrites, n'appelait pas sa base pour
+celles-là et inventait (« le Portigal est un véhicule électrique »).
 """
 
 from __future__ import annotations
@@ -18,12 +23,14 @@ from __future__ import annotations
 import json
 import random
 import sys
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import faits  # noqa: E402
 from examen import FAITS  # noqa: E402
+from examen_faits import QUESTIONS as JAMAIS_VUES, QUESTIONS_VITE  # noqa: E402
 
 R = random.Random(2026)
 MOIS = set("janvier février mars avril mai juin juillet août septembre octobre novembre décembre".split())
@@ -228,7 +235,8 @@ def a_lieu(nom: str) -> str:
 
 
 def interdits_examen() -> set[str]:
-    return {faits.normaliser(q) for q, _, _ in FAITS}
+    return ({faits.normaliser(q) for q, _, _ in FAITS}
+            | {faits.normaliser(e) for _, e, _ in JAMAIS_VUES + QUESTIONS_VITE})
 
 
 def cite_dans_examen(nom: str, questions: set[str]) -> bool:
@@ -236,7 +244,65 @@ def cite_dans_examen(nom: str, questions: set[str]) -> bool:
     return len(n) >= 2 and any(f" {n} " in f" {q} " for q in questions)
 
 
-def echange(qid: str, relation: str, entites: dict, minuscules: bool = False) -> tuple[str, str] | None:
+# Questions « tapées vite », sans phrase complète.
+TELEGRAPHIQUES = {
+    ("pays", "capitale"): ["capital {de_X} ?", "capitale {X}", "{X} capitale ?", "capitale {de_X}",
+                           "c koi la capitale {de_X}", "la capitale {de_X} c'est quoi", "capitale de {X} ?"],
+    ("pays", "monnaie"): ["monnaie {X} ?", "monnaie {de_X}", "{X} monnaie"],
+    ("pays", "langue"): ["langue {X} ?", "on parle quoi {en_X}", "langue officielle {X}"],
+    ("pays", "continent"): ["continent {X} ?", "{X} continent"],
+    ("pays", "population"): ["population {X}", "habitants {X} ?", "combien d'habitants {en_X}"],
+    ("ville", "pays"): ["{X} pays ?", "{X} c'est où", "pays de {X}"],
+    ("ville", "population"): ["population {X}", "habitants {X} ?"],
+    ("personne", "naissance"): ["{X} né{e} quand", "naissance {X}", "né{e} quand {X} ?", "date de naissance {X}"],
+    ("personne", "décès"): ["{X} mort{e} quand", "décès {X}", "mort de {X} quand ?"],
+    ("personne", "lieu de naissance"): ["{X} né{e} où", "lieu de naissance {X}"],
+    ("livre", "auteur"): ["auteur {X} ?", "{X} auteur", "qui a ecrit {X}", "{X} c'est de qui"],
+    ("livre", "date"): ["{X} date ?", "{X} publié quand"],
+    ("tableau", "auteur"): ["peintre {X} ?", "qui a peint {X}", "{X} peintre"],
+    ("tableau", "date"): ["{X} peint quand"],
+    ("musique", "compositeur"): ["compositeur {X} ?", "{X} compositeur"],
+    ("film", "réalisateur"): ["réalisateur {X} ?", "{X} réalisé par qui", "qui a fait {X}"],
+    ("film", "date"): ["{X} sorti quand", "sortie {X} ?"],
+    ("élément", "symbole"): ["symbole {X} ?", "symbole chimique {X}"],
+    ("élément", "numéro atomique"): ["numéro atomique {X}"],
+    ("montagne", "altitude"): ["altitude {X} ?", "hauteur {X}"],
+    ("événement", "début"): ["début {X} ?", "{X} commencé quand"],
+    ("événement", "fin"): ["fin {X} ?", "{X} fini quand"],
+    ("événement", "date"): ["{X} date ?", "{X} c'était quand"],
+    ("entreprise", "fondateur"): ["fondateur {X} ?", "{X} fondé par qui"],
+    ("entreprise", "création"): ["{X} créé quand", "création {X} ?"],
+    ("entreprise", "siège"): ["siège {X} ?", "{X} siège"],
+}
+
+
+def sans_accents(texte: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", texte) if unicodedata.category(c) != "Mn")
+
+
+def faute(nom: str) -> str:
+    """Une faute de frappe dans le mot le plus long : lettre inversée, oubliée, doublée ou changée."""
+    mots = nom.split()
+    i = max(range(len(mots)), key=lambda k: len(mots[k]))
+    m = mots[i]
+    if len(m) < 5:
+        return nom
+    j = R.randrange(1, len(m) - 1)
+    op = R.choice(["inverser", "oublier", "doubler", "changer"])
+    if op == "inverser":
+        m = m[:j] + m[j + 1] + m[j] + m[j + 2:]
+    elif op == "oublier":
+        m = m[:j] + m[j + 1:]
+    elif op == "doubler":
+        m = m[:j] + m[j] + m[j:]
+    else:
+        voyelles = "aeiouy"
+        m = m[:j] + (R.choice(voyelles.replace(m[j], "")) if m[j] in voyelles else m[j]) + m[j + 1:]
+    mots[i] = m
+    return " ".join(mots)
+
+
+def echange(qid: str, relation: str, entites: dict, vite: bool = False) -> tuple[str, str] | None:
     e = entites[qid]
     nom = e["nom"]
     v = faits.chercher(nom, relation)
@@ -246,15 +312,27 @@ def echange(qid: str, relation: str, entites: dict, minuscules: bool = False) ->
         return None
     g = formes(nom, e)
     questions, reponse = GABARITS[(e["type"], relation)]
-    q = maj(R.choice(questions).format(**g))
-    if minuscules:  # comme on tape vite : « capitale de l'espagne ? »
-        q = q.lower()
-        nom = nom.lower()
-    appel = f"[fait: {nom} | {relation} = {v}]"
+    tape = nom  # le nom tel que l'utilisateur l'écrit, recopié dans l'appel
+    if not vite:
+        q = maj(R.choice(questions).format(**g))
+    else:
+        # La faute n'est gardée que si la base retrouve quand même la bonne réponse.
+        if R.random() < 0.35 and faits.chercher(fautif := faute(nom), relation) == v:
+            tape = fautif
+        g_tape = {k: (x.replace(nom, tape) if isinstance(x, str) else x) for k, x in g.items()}
+        gabarits = TELEGRAPHIQUES.get((e["type"], relation), []) if R.random() < 0.5 else questions
+        q = R.choice(gabarits or questions).format(**g_tape)
+        if R.random() < 0.6:
+            q, tape = q.lower(), tape.lower()
+        if R.random() < 0.3:
+            q, tape = sans_accents(q), sans_accents(tape)
+        if R.random() < 0.4:
+            q = q.rstrip(" ?.")
+    appel = f"[fait: {tape} | {relation} = {v}]"
     return q, f"{appel} {reponse(g, v)}".replace("..", ".").replace("?.", "?")
 
 
-def conversations(n: int = 2500) -> list[list[dict]]:
+def conversations(n: int = 3000) -> list[list[dict]]:
     entites, donnees, _ = faits._base()
     examen = interdits_examen()
     par_categorie: dict[str, list[str]] = {}
@@ -272,7 +350,7 @@ def conversations(n: int = 2500) -> list[list[dict]]:
         if not relations:
             continue
         relation = R.choice(relations)
-        premier = echange(qid, relation, entites, minuscules=R.random() < 0.1)
+        premier = echange(qid, relation, entites, vite=R.random() < 0.35)
         if premier is None:
             continue
         conv = [{"role": "user", "content": premier[0]}, {"role": "assistant", "content": premier[1]}]

@@ -1,8 +1,10 @@
 """
 Quinze questions de faits jamais vues à l'entraînement (ni dans
-data/sft/faits.json, ni dans l'examen), pour mesurer la base de faits.
+data/sft/faits.json, ni dans l'examen), pour mesurer la base de faits ; puis
+les mêmes, « tapées vite » (fautes, sans accents, style télégraphique).
 
     python examen_faits.py checkpoints/carl_v8/best.pt checkpoints/carl_v10/best.pt
+    python examen_faits.py -q checkpoints/carl_v11/best.pt   # seulement les ratés
 
 La bonne réponse vient de la base elle-même (faits.chercher) ; un modèle qui
 répond de mémoire doit la trouver seul.
@@ -34,26 +36,49 @@ QUESTIONS = [
     ("Dans quel pays se trouve Nantes ?", "Nantes", "pays"),
 ]
 
+# Les mêmes faits, « tapés vite » : fautes, sans accents, style télégraphique.
+QUESTIONS_VITE = [
+    ("capital du portigal ?", "Portugal", "capitale"),
+    ("quand est ne einstein", "Albert Einstein", "naissance"),
+    ("realisateur titanic ?", "Titanic", "réalisateur"),
+    ("c koi la capitale de la slovaki", "Slovaquie", "capitale"),
+    ("population toulouse", "Toulouse", "population"),
+    ("ou est nee marie curie", "Marie Curie", "lieu de naissance"),
+    ("fondateur microsfot", "Microsoft", "fondateur"),
+    ("symbole chimique oxygene", "oxygène", "symbole"),
+    ("moliere mort quand", "Molière", "décès"),
+    ("beyonce née quand ?", "Beyoncé", "naissance"),
+    ("siege d'amazon", "Amazon", "siège"),
+    ("nietzche mort en quelle année", "Nietzsche", "décès"),
+    ("nantes pays ?", "Nantes", "pays"),
+    ("altitude du mon blanc", "mont Blanc", "altitude"),
+    ("qui a peint guernica", "Guernica", "auteur"),
+]
+
+
 def main() -> None:
+    bavard = "-q" not in sys.argv
     device = get_device()
     tok = BPETokenizer.load("tokenizer/vocab.json")
-    for chemin in sys.argv[1:] or ["checkpoints/carl_v10/best.pt"]:
+    for chemin in [a for a in sys.argv[1:] if not a.startswith("-")] or ["checkpoints/carl_v10/best.pt"]:
         ck = load_checkpoint(chemin, device)
         model = GPT(ck["config"]).to(device)
         model.load_state_dict(ck["model"])
         model.eval()
-        ok = 0
         print(f"\n##### {chemin}")
-        for q, e, r in QUESTIONS:
-            verite = faits.chercher(e, r)
-            cle = verite.split(" et ")[0].split(",")[0].split()[-1].lower()  # « 1879 », « cameron », « o »
-            brut = repondre(model, tok, [{"role": "user", "content": q}], device, temperature=0.0, top_k=1,
-                            max_tokens=80, repetition_penalty=1.15, brut=True)
-            affiche = afficher(brut).strip()
-            bon = cle in affiche.lower().replace(".", " ").split() or cle in affiche.lower()
-            ok += bon
-            print(f"  {'✓' if bon else '✗'} {q}\n      -> {affiche[:110]}\n      (attendu : {verite} ; brut : {brut[:70]!r})")
-        print(f"  == {ok}/{len(QUESTIONS)}")
+        for titre, questions in [("bien écrites", QUESTIONS), ("tapées vite", QUESTIONS_VITE)]:
+            ok = 0
+            for q, e, r in questions:
+                verite = faits.chercher(e, r)
+                cle = verite.split(" et ")[0].split(",")[0].split()[-1].lower()  # « 1879 », « cameron », « o »
+                brut = repondre(model, tok, [{"role": "user", "content": q}], device, temperature=0.0, top_k=1,
+                                max_tokens=80, repetition_penalty=1.15, brut=True)
+                affiche = afficher(brut).strip()
+                bon = cle in affiche.lower().replace(".", " ").split() or cle in affiche.lower()
+                ok += bon
+                if bavard or not bon:
+                    print(f"  {'✓' if bon else '✗'} {q}\n      -> {affiche[:110]}\n      (attendu : {verite} ; brut : {brut[:70]!r})")
+            print(f"  == {titre} : {ok}/{len(questions)}")
 
 
 if __name__ == "__main__":
