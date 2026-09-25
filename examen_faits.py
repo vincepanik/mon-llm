@@ -106,7 +106,7 @@ def jeux(tous: bool = True) -> list[tuple[str, list]]:
 
 
 def main() -> None:
-    from chat import repondre
+    from chat import repondre, repondre_aiguille
     from model import GPT
     from outils import afficher
     from tokenizer import BPETokenizer
@@ -125,8 +125,11 @@ def main() -> None:
             ok = 0
             for q, e, r in questions:
                 verite = VERITES[(e, r)]
-                brut = repondre(model, tok, [{"role": "user", "content": q}], device, temperature=0.0, top_k=1,
-                                max_tokens=80, repetition_penalty=1.15, brut=True)
+                reglages = dict(temperature=0.0, top_k=1, max_tokens=80, repetition_penalty=1.15)
+                if "--aiguilleur" in sys.argv:
+                    brut, _ = repondre_aiguille(model, tok, [{"role": "user", "content": q}], device, **reglages)
+                else:
+                    brut = repondre(model, tok, [{"role": "user", "content": q}], device, brut=True, **reglages)
                 bon = contient(brut, attendus(verite, r))
                 ok += bon
                 if bavard or not bon:

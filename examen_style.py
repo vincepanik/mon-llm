@@ -52,7 +52,7 @@ def cloture_ok(r: str) -> bool:
 
 
 def main() -> None:
-    from chat import repondre
+    from chat import repondre, repondre_aiguille
     from model import GPT
     from outils import afficher
     from tokenizer import BPETokenizer
@@ -61,6 +61,11 @@ def main() -> None:
     device = get_device()
     tok = BPETokenizer.load("tokenizer/vocab.json")
     reglages = dict(temperature=0.0, top_k=1, max_tokens=150, repetition_penalty=1.15)
+
+    def rep(q: str) -> str:
+        if "--aiguilleur" in sys.argv:
+            return afficher(repondre_aiguille(model, tok, [{"role": "user", "content": q}], device, **reglages)[0]).strip()
+        return afficher(repondre(model, tok, [{"role": "user", "content": q}], device, brut=True, **reglages)).strip()
     for chemin in [a for a in sys.argv[1:] if not a.startswith("-")] or ["checkpoints/carl_v11/best.pt"]:
         ck = load_checkpoint(chemin, device)
         model = GPT(ck["config"]).to(device)
@@ -70,14 +75,13 @@ def main() -> None:
         for titre, questions, test in [("ouverture", OUVERTURES, ouverture_ok), ("clôture", CLOTURES, cloture_ok)]:
             ok = 0
             for q in questions:
-                r = afficher(repondre(model, tok, [{"role": "user", "content": q}], device, brut=True, **reglages)).strip()
+                r = rep(q)
                 bon = test(r)
                 ok += bon
                 if not bon or "-v" in sys.argv:
                     print(f"  {'✓' if bon else '✗'} [{titre}] {q} -> {r[:100]!r}")
             print(f"  == {titre} : {ok}/{len(questions)}")
-        reponses = [afficher(repondre(model, tok, [{"role": "user", "content": q}], device, brut=True, **reglages)).strip()
-                    for q in OUVERTES]
+        reponses = [rep(q) for q in OUVERTES]
         n = len(reponses)
         print(f"  == style (demandes ouvertes) : listes/gras {sum(bool(MISE_EN_FORME.search(r)) for r in reponses)}/{n}, "
               f"vouvoiement {sum(bool(VOUS.search(r)) for r in reponses)}/{n}, "

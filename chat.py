@@ -197,6 +197,23 @@ def repondre(model, tok, messages, device, temperature: float, top_k: int, max_t
     return r if brut else afficher(r).strip()
 
 
+def repondre_aiguille(model, tok, historique: list[dict], device, memoire: int | None = None,
+                      **reglages) -> tuple[str, str]:
+    """
+    Avec l'aiguilleur (aiguilleur.py) devant Carl : une réponse toute prête quand
+    il est sûr de lui (salut, merci, identité, heure, liste de capitales...),
+    l'échange précédent pour une relance, sinon Carl comme d'habitude.
+    Renvoie (réponse brute, ce qui a décidé : « carl » ou la classe de l'aiguilleur).
+    """
+    import aiguilleur
+
+    d = aiguilleur.decider(historique[-1]["content"])
+    if d.reponse:
+        return d.reponse, f"{d.classe} ({d.proba:.0%})"
+    vus = a_montrer(historique, 1 if d.relance and len(historique) >= 3 else memoire)
+    return repondre(model, tok, vus, device, brut=True, **reglages), "carl" + (" (relance)" if d.relance else "")
+
+
 def _generer(model, tok, messages, device, temperature: float, top_k: int, max_tokens: int,
              repetition_penalty: float, avec_outils: bool = True, sans_repetition: int = 3) -> str:
     """
@@ -314,12 +331,14 @@ class Journal:
             f"*Modèle : `{checkpoint}` — {options}*\n\n---\n\n", encoding="utf-8")
         self.n = 0
 
-    def ajouter(self, question: str, reponse_brute: str, vu: int) -> None:
+    def ajouter(self, question: str, reponse_brute: str, vu: int, aiguillage: str | None = None) -> None:
         self.n += 1
         calculs = [m.group(0) for m in re.finditer(r"\[calc:[^\]]*\]", reponse_brute)]
         consultes = [m.group(0) for m in re.finditer(r"\[fait:[^\]]*\]", reponse_brute)]
         texte = f"**Vous** : {question}\n\n**Carl** : {afficher(reponse_brute).strip()}\n\n"
         notes = []
+        if aiguillage:
+            notes.append(f"réponse de l'aiguilleur : {aiguillage}")
         if vu > 1:
             notes.append("il voyait l'échange précédent (relance)")
         if calculs:
@@ -359,6 +378,8 @@ def main() -> None:
                         help="ni calculatrice ni base de faits : Carl répond de mémoire")
     parser.add_argument("--sans-journal", action="store_true",
                         help="ne pas enregistrer la conversation dans conversations/")
+    parser.add_argument("--sans-aiguilleur", action="store_true",
+                        help="sans l'aiguilleur (aiguilleur.py) devant Carl : politesses, identité, heure, listes")
     parser.add_argument("--memoire", type=int, default=None,
                         help="échanges précédents montrés au modèle (par défaut : 1 pour une relance, 0 sinon)")
     args = parser.parse_args()
@@ -382,6 +403,9 @@ def main() -> None:
         {"température": args.temperature, "wikipedia": "oui" if args.wikipedia else "non"})
     if journal:
         print(f"(conversation enregistrée dans {journal.chemin})")
+    import aiguilleur
+
+    aiguille = not args.sans_aiguilleur and aiguilleur.disponible()
     messages: list[dict] = []
     while True:
         try:
@@ -392,12 +416,16 @@ def main() -> None:
         if not question:
             break
         messages.append({"role": "user", "content": question})
-        vus = a_montrer(messages, args.memoire)
-        reponse = repondre(model, tok, vus, device, brut=True, **reglages)
+        if aiguille:
+            reponse, source = repondre_aiguille(model, tok, messages, device, args.memoire, **reglages)
+            vu = 2 if "relance" in source else 1
+        else:
+            vus = a_montrer(messages, args.memoire)
+            reponse, source, vu = repondre(model, tok, vus, device, brut=True, **reglages), "carl", len(vus)
         print(f"carl > {afficher(reponse).strip()}")
         messages.append({"role": "assistant", "content": reponse})
         if journal:
-            journal.ajouter(question, reponse, len(vus))
+            journal.ajouter(question, reponse, vu, None if source.startswith("carl") else source)
 
 
 if __name__ == "__main__":

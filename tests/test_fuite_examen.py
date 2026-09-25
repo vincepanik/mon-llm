@@ -84,3 +84,19 @@ def test_calculs_d_examen_jamais_faits_a_l_entrainement():
                               if a and re.search(r"\d+ (fois|plus|moins)", q)]
     fuites = [(q, r) for q, r in examen if (frozenset(re.findall(r"\d+", q)), r) in faits_]
     assert not fuites, fuites
+
+
+def test_aiguilleur_pas_entraine_sur_les_examens():
+    import sys
+
+    sys.path.insert(0, "data")
+    from aiguillage import exemples
+    from examen_conversation import CONVERSATIONS
+    from examen_style import CLOTURES, OUVERTES, OUVERTURES
+
+    examens = {norm(q) for q in list(TESTS) + OUVERTURES + CLOTURES + OUVERTES}
+    examens |= {norm(q) for conv in CONVERSATIONS for q, _ in conv}
+    from aiguillage import POLITESSE
+
+    fuites = {m for m, _ in exemples() if norm(m) in examens and not set(norm(m).split()) <= POLITESSE}
+    assert not fuites, fuites

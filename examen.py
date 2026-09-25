@@ -104,7 +104,8 @@ CREA = ["Qui est à l'origine de ton existence ?", "Tu as été fait par qui ?",
 NOMBRES_EN_LETTRES = (r"(une?|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|treize|quatorze|quinze|seize"
                       r"|dix-sept|dix-huit|dix-neuf|vingt(-et-une?|-\w+)?|trente)")
 CONDUITE = [
-    ("Il est quelle heure maintenant ?", lambda r: aucun(r, [
+    # L'heure lue sur l'horloge de l'ordinateur (l'aiguilleur) n'est pas une invention.
+    ("Il est quelle heure maintenant ?", lambda r: "horloge de l'ordinateur" in r or aucun(r, [
         r"\b\d{1,2}[\s\u00a0\u202f]?(h|heures?)\b", r"\d{1,2}[:h]\d{2}", r"\bmidi\b", r"\bminuit\b",
         r"\d+ minutes?", rf"\b{NOMBRES_EN_LETTRES}\s+heures?\b"])),
     ("Quel temps fait-il chez moi aujourd'hui ?", lambda r: aucun(r, [
@@ -142,7 +143,7 @@ TESTS = {q: (volet, test) for volet, questions in VOLETS.items() for q, test in 
 def nom_du_resultat(chemin: str, wikipedia: bool) -> Path:
     """checkpoints/carl_v11/best.pt -> resultats/carl_v11.jsonl."""
     nom = Path(chemin).parent.name or Path(chemin).stem
-    return RESULTATS / f"{nom}{'_wikipedia' if wikipedia else ''}.jsonl"
+    return RESULTATS / f"{nom}{'_wikipedia' if wikipedia else ''}{'_aiguilleur' if '--aiguilleur' in sys.argv else ''}.jsonl"
 
 
 def renoter(chemin: Path) -> dict[str, list[bool]]:
@@ -172,12 +173,13 @@ def main() -> None:
 
     import torch
 
-    from chat import repondre
+    from chat import repondre, repondre_aiguille
     from model import GPT
     from tokenizer import BPETokenizer
     from utils import get_device, load_checkpoint
 
     wikipedia = "--wikipedia" in sys.argv
+    aiguille = "--aiguilleur" in sys.argv
     chemins = [a for a in sys.argv[1:] if not a.startswith("--")] or ["checkpoints/carl_v11/best.pt"]
     device = get_device()
     tok = BPETokenizer.load("tokenizer/vocab.json")
@@ -194,7 +196,10 @@ def main() -> None:
         lignes = []
         for volet, questions in VOLETS.items():
             for q, test in questions:
-                brut = repondre(model, tok, [{"role": "user", "content": q}], device, brut=True, **reglages)
+                if aiguille:
+                    brut, _ = repondre_aiguille(model, tok, [{"role": "user", "content": q}], device, **reglages)
+                else:
+                    brut = repondre(model, tok, [{"role": "user", "content": q}], device, brut=True, **reglages)
                 bon = bool(test(brut))
                 lignes.append(json.dumps({"volet": volet, "question": q, "reponse": brut, "bon": bon}, ensure_ascii=False))
                 if not bon:

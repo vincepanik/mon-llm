@@ -517,6 +517,46 @@ générales encore faibles (« Que faut-il pour un gâteau au chocolat ? ») : �
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v13
     python examen_style.py checkpoints/carl_v11/best.pt checkpoints/carl_v13/best.pt
 
+### L'aiguilleur : un « Système 1 » devant Carl
+
+Idée venue de Jev (TypeSafe AI), un modèle qui ne génère pas de texte mais
+répond à une question fermée par une décision et une probabilité. Presque
+tous les ratés d'une vraie conversation avec v13 étaient des erreurs
+d'aiguillage, pas d'écriture : « Bon, j'y vais. Salut ! » pris pour un
+bonjour, « c'est une mauvaise histoire » -> « Très bien ! », « Cite-moi 3
+capitales » -> un film de science-fiction.
+
+`aiguilleur.py`, local et hors ligne : e5-small (déjà là pour Wikipédia) résume
+le message en 384 nombres, une régression logistique apprise sur 1 817 exemples
+(`data/aiguillage.py`, aucun des examens) le range dans une de 12 classes :
+salut, au revoir, merci, critique, nom, créateur, capacités, heure, météo et
+actualité, liste de capitales ou de pays, relance, autre. Sûr de lui (60 % au
+moins, et quelques mots-clés en garde-fou : « quand est ne einstein » n'est pas
+une question d'heure), il répond à la place de Carl là où une réponse fixe ou
+un programme fait mieux : l'identité, l'heure de l'horloge du Mac, trois
+capitales tirées de la base de faits, une excuse. Une relance : il montre
+l'échange précédent. Sinon, Carl répond. 208 messages des examens sur 215 bien
+aiguillés ; les 7 autres vont à Carl (confiance sous le seuil), sans dommage.
+
+| Carl v13 | seul | avec l'aiguilleur |
+|---|---|---|
+| examen : nom / créateur / savoirs | 9 / 9 / 27 | **10 / 10** / 27 |
+| conduite / calcul | 4 / 10 | 4 / 10 |
+| conversations (tours justes) | 22/25 | 22/25 |
+| ouvertures / clôtures | 7 / 6 | **8 / 7** |
+| faits tapés vite, test | 21/37 | 21/37 |
+
+Les savoirs, les faits et le style des réponses libres ne bougent pas : c'est
+toujours Carl qui écrit (les recettes restent décousues). La note de conduite
+compte désormais juste l'heure lue sur l'horloge. Actif par défaut dans
+`chat.py` (`--sans-aiguilleur` pour l'enlever) ; les examens le prennent avec
+`--aiguilleur`, pour mesurer Carl seul par défaut.
+
+    python aiguilleur.py --entrainer
+    python aiguilleur.py --tester
+    python aiguilleur.py "Cite-moi 3 capitales d'Europe"
+    python examen_style.py checkpoints/carl_v13/best.pt --aiguilleur
+
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 
 Le même Carl (nom, créateur, intentions) greffé sur Gemma 4 E4B (Google,

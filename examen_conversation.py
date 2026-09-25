@@ -35,7 +35,7 @@ CONVERSATIONS = [
 
 
 def main() -> None:
-    from chat import a_montrer, repondre
+    from chat import a_montrer, repondre, repondre_aiguille
     from model import GPT
     from outils import afficher
     from tokenizer import BPETokenizer
@@ -59,9 +59,13 @@ def main() -> None:
             historique, toutes_justes = [], True
             for question, attendus in conv:
                 historique.append({"role": "user", "content": question})
-                vus = a_montrer(historique, memoire)
-                brut = repondre(model, tok, vus, device, temperature=0.0, top_k=1, max_tokens=80,
-                                repetition_penalty=1.15, brut=True)
+                reglages = dict(temperature=0.0, top_k=1, max_tokens=80, repetition_penalty=1.15)
+                if "--aiguilleur" in sys.argv:
+                    brut, source = repondre_aiguille(model, tok, historique, device, memoire, **reglages)
+                    vus = historique[-3:] if "relance" in source else historique[-1:]
+                else:
+                    vus = a_montrer(historique, memoire)
+                    brut = repondre(model, tok, vus, device, brut=True, **reglages)
                 historique.append({"role": "assistant", "content": brut})
                 if attendus is None:
                     continue
