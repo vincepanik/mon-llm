@@ -72,6 +72,10 @@ SANS_SUJET = set("""et ou où quand pourquoi comment combien qui quoi que quel q
 # question nomme autre chose. Un pronom seulement à sa place de pronom : en tête
 # de question, ou en minuscules (« qui a réalisé Elle ? » parle du film).
 RENVOI = re.compile(r"\b(sa|son|ses|leur|leurs|celui|celle|ceux|celui-ci|celle-ci)\b|\bl'(a|ont|avait|avaient)\b", re.I)
+# « décris-moi la recette 3 », « la 2 », « le premier », « la dernière » : un
+# élément de la réponse précédente (souvent une liste), invisible sans elle.
+ELEMENT = re.compile(r"\b(la|le|les|l')\s*(\w+\s)?(\d+|n°\s*\d+|numéro \d+|premi[eè]re?|deuxi[eè]me|second[e]?"
+                     r"|troisi[eè]me|quatri[eè]me|cinqui[eè]me|derni[eè]re?)\b(?!\s*\w*\s*(de|du|des|d')\b)", re.I)
 PRONOM = re.compile(r"(?:^|[\s-])(il|ils|elle|elles|lui|eux)(?=[\s?!.,-]|$)")
 IMPERSONNEL = re.compile(r"\b(y a-t-il|heure est-il|fait-il|il y a|il faut|il pleut|il fait|s'il)\b", re.I)
 
@@ -98,7 +102,8 @@ def est_relance(question: str) -> bool:
     if mots and all(m in POLITESSES for m in mots):  # « merci », « bonjour », « ok »...
         return False
     courte = len(mots) <= 3 and all(m in SANS_SUJET for m in mots)
-    return bool(RELANCE.match(question)) or courte or (len(mots) <= 5 and renvoie(question))
+    element = len(mots) <= 8 and bool(ELEMENT.search(question))
+    return bool(RELANCE.match(question)) or courte or element or (len(mots) <= 5 and renvoie(question))
 
 
 def politesse(message: str) -> bool:
@@ -263,7 +268,12 @@ def _generer(model, tok, messages, device, temperature: float, top_k: int, max_t
                     sans_outil = True
     else:  # plus de place : on coupe à la dernière phrase complète, pas au milieu d'un mot
         return couper(tok.decode(reponse).strip())
-    return tok.decode(reponse).strip()
+    return sans_element_vide(tok.decode(reponse).strip())
+
+
+def sans_element_vide(texte: str) -> str:
+    """Une liste qui s'arrête sur un numéro seul (« 2. Ajoutez...\n3. ») : on retire « 3. »."""
+    return re.sub(r"\n\s*(?:\d+[.)]|[-*•])\s*$", "", texte).rstrip()
 
 
 def couper(texte: str) -> str:

@@ -22,7 +22,12 @@ def test_relances():
                     "depuis quand ?", "combien d'habitants ?", "où est-il né ?", "quand est-il mort ?",
                     "il est né quand ?", "qui l'a écrit ?", "ils parlent quelle langue ?", "Elle a quel âge ?"]:
         assert est_relance(relance), relance
-    for autonome in ["qui a réalisé Elle ?", "Quelle heure est-il ?", "y a-t-il une capitale ?"]:
+    for element in ["ok décris moi la recette 3", "la 2", "explique moi la deuxième", "et la dernière ?",
+                    "je veux la recette n°2"]:
+        assert est_relance(element), element
+    for autonome in ["qui a réalisé Elle ?", "Quelle heure est-il ?", "y a-t-il une capitale ?",
+                     "Quelle est la capitale de la Norvège ?", "Qui était le premier empereur des Français ?",
+                     "En quelle année a commencé la Première Guerre mondiale ?"]:
         assert not est_relance(autonome), autonome
 
 
@@ -85,3 +90,9 @@ def test_calculatrice():
     # Pendant l'appel, l'anti-boucle est suspendu (Carl y recopie l'opération).
     assert dans_un_calcul("4827 + 3196 = [calc: 4827+3196")
     assert not dans_un_calcul("= [calc: 1+2 = 3]. Et")
+
+
+def test_liste_sans_element_vide():
+    from chat import sans_element_vide
+    assert sans_element_vide("1. Couper.\n2. Cuire.\n3.") == "1. Couper.\n2. Cuire."
+    assert sans_element_vide("Il y a 3 étapes.") == "Il y a 3 étapes."
