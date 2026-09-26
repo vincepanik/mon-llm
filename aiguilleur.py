@@ -344,6 +344,9 @@ def decider(message: str, seuil: float = SEUIL) -> Decision:
         return Decision("autre", proba) if classe == "liste" else d
     if classe in INDICES and not re.search(INDICES[classe], message, re.I):
         return Decision("autre", proba)
+    if classe == "relance" and len(message.split()) <= 5 and re.search(INDICES["meteo"], message, re.I):
+        # « et la température ? » après l'heure : Carl, voyant l'échange, inventait « 18 degrés à Paris ».
+        return Decision("meteo", proba, _choisir(REPONSES["meteo"], message))
     if classe == "relance":
         d.relance = True
     elif classe == "salut":
@@ -352,8 +355,15 @@ def decider(message: str, seuil: float = SEUIL) -> Decision:
         d.reponse = _heure(message)
     elif classe == "liste":
         d.reponse = _liste(message)
-    elif classe == "humeur" and re.search(r"bof|pas terrible|pas trop|fatigu|triste|moyen|mal\b", message, re.I):
+    elif classe == "humeur" and re.search(r"bof|pas terrible|pas trop|pas bien|fatigu|crev|épuis|triste|moyen|mal\b|"
+                                            r"malade|stress|ennui", message, re.I):
         d.reponse = "Désolé de l'entendre. Si je peux t'aider en quelque chose, dis-le-moi."
+    elif classe == "humeur" and re.search(r"faim|soif", message, re.I):
+        # « j'ai faim » : « Content de l'entendre ! » ne va pas.
+        d.reponse = "Alors il est temps de manger ou de boire un peu ! Si tu veux une idée, demande-moi."
+    elif classe == "humeur" and not re.search(r"bien|super|génial|top|forme|nickel|tranquille|cool|content|heureux|"
+                                              r"parfait|pas mal|ça va|ca va", message, re.I):
+        d.reponse = "D'accord ! Je suis là si tu as besoin."  # « rien », « bah », ni bonne ni mauvaise nouvelle
     else:
         d.reponse = _choisir(REPONSES[classe], message)
     return d
@@ -395,7 +405,8 @@ def attendus() -> list[tuple[str, set[str]]]:
           ("Quelle est la date aujourd'hui ?", {"heure"}), ("Tu peux faire quoi exactement ?", {"capacites"}),
           ("Il va faire beau demain ?", {"meteo"}), ("Et pour la Suisse ?", {"relance"}), ("Bon, j'y vais. Salut !", {"au_revoir"}),
           ("Tu es vraiment sûr de ça ?", {"doute"}), ("Hmm, t'es certain de ton coup ?", {"doute"}),
-          ("Ça va super bien", {"humeur"}), ("Je suis crevé aujourd'hui", {"humeur", "autre"})]
+          ("Ça va super bien", {"humeur"}), ("Je suis crevé aujourd'hui", {"humeur", "autre"}),
+          ("et la temperature ?", {"meteo"})]
     return a
 
 
