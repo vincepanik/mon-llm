@@ -127,6 +127,11 @@ AUTRES_ECRITS = [
     "c'est quoi un trou noir ?", "comment fonctionne un moteur ?", "que faire à Paris ?", "une blague ?",
     "donne-moi 3 recettes", "propose-moi un prénom pour un chat", "comment rester motivé ?",
     "traduis bonjour en anglais", "c'est quoi l'intelligence artificielle ?", "aide-moi à écrire un message",
+    # « donne moi une recette » était pris pour une relance (« décris-moi la recette 3 ») : Carl
+    # voyait l'échange précédent, un simple « ok merci ».
+    "donne moi une recette", "donne-moi une idée", "donne moi un conseil", "une recette ?", "un conseil ?",
+    "une idée de sortie ?", "propose-moi une activité", "donne-moi un exemple de phrase", "trouve-moi un titre",
+    "donne moi une astuce pour ranger", "une blague ?", "un exercice de maths ?",
     # Contrastes : des questions de faits qui ressemblent à d'autres classes.
     "qui a fondé Apple ?", "qui a créé Facebook ?", "qui a inventé l'imprimerie ?", "qui a construit la tour Eiffel ?",
     "qui a écrit Harry Potter ?", "qui a fondé Google ?", "qui est le créateur de Mickey ?", "qui a découvert l'Amérique ?",

@@ -319,6 +319,10 @@ def fait_direct(message: str) -> str | None:
 
 
 CREATEUR = re.compile(r"\b(kevin|pacini)\b", re.I)
+# « tu as quel âge ? » : il se présentait sans répondre. Seulement l'âge de Carl, pas « quel âge a Macron ? ».
+AGE = re.compile(r"\bquel (âge|age)\b.{0,6}\b(as-tu|as tu|tu as|t'as|avez-vous|vous avez)\b|"
+                 r"\b(tu as|t'as|as-tu|vous avez) quel (âge|age)\b|\b(ton|votre) (âge|age)\b|"
+                 r"\b(tu es|t'es|es-tu) n[ée]e? quand\b|\bquand (es-tu|t'es|tu es) n[ée]e?\b|\bton anniversaire\b", re.I)
 
 
 def decider(message: str, seuil: float = SEUIL) -> Decision:
@@ -333,6 +337,9 @@ def decider(message: str, seuil: float = SEUIL) -> Decision:
     if CREATEUR.search(message):
         return Decision("createur", 1.0, "Kevin Pacini est mon créateur : il m'a entraîné de zéro, en français. "
                                          "Je n'en sais pas plus sur lui.")
+    if AGE.search(message):
+        return Decision("age", 1.0, "Je n'ai pas d'âge comme un humain : je suis un programme. Kevin Pacini m'a "
+                                    "entraîné en 2026, et je ne vieillis pas entre deux conversations.")
     classe, proba = classer(message)
     d = Decision(classe, proba)
     if proba < seuil or classe in ("autre", "liste"):
@@ -406,7 +413,8 @@ def attendus() -> list[tuple[str, set[str]]]:
           ("Il va faire beau demain ?", {"meteo"}), ("Et pour la Suisse ?", {"relance"}), ("Bon, j'y vais. Salut !", {"au_revoir"}),
           ("Tu es vraiment sûr de ça ?", {"doute"}), ("Hmm, t'es certain de ton coup ?", {"doute"}),
           ("Ça va super bien", {"humeur"}), ("Je suis crevé aujourd'hui", {"humeur", "autre"}),
-          ("et la temperature ?", {"meteo"})]
+          ("et la temperature ?", {"meteo"}), ("donne moi une recette de gâteau", {"autre"}),
+          ("tu as quel âge ?", {"age"}), ("quel âge a Emmanuel Macron ?", {"autre"})]
     return a
 
 
