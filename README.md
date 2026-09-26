@@ -94,7 +94,7 @@ seule par défaut (`--memoire 0`).
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
         --epochs 2 --out checkpoints/carl
-    python chat.py --checkpoint checkpoints/carl_v13/best.pt
+    python chat.py --checkpoint checkpoints/carl_v14/best.pt
 
 ### Niveau 1 : Carl de 125M avec compar:IA, puis DPO
 
@@ -173,7 +173,7 @@ fait oublier des faits. La recherche est donc désactivée par défaut
     python sft.py --checkpoint checkpoints/carl_v5/best.pt \
         --data data/sft/lecture.json data/sft/comparia_reparation.json data/sft/conversations.json data/sft/calculs.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v6
-    python chat.py --checkpoint checkpoints/carl_v13/best.pt
+    python chat.py --checkpoint checkpoints/carl_v14/best.pt
 
 ### Génération de Carl : relances, boucles, longueur
 
@@ -229,7 +229,7 @@ connaissances viennent du pré-entraînement.
         --data data/sft/claude.json data/sft/claude.json data/sft/claude.json data/sft/calculs.json \
                data/sft/comparia_2000.json data/sft/conversations.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v8
-    python chat.py --checkpoint checkpoints/carl_v13/best.pt
+    python chat.py --checkpoint checkpoints/carl_v14/best.pt
 
 ### Étape E : une base de faits Wikidata (Carl v10)
 
@@ -274,7 +274,7 @@ année ») : l'outil ne sait que ce qu'on y a mis.
                data/sft/comparia_2000_outils.json data/sft/conversations_outils.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v10
     python examen_faits.py checkpoints/carl_v8/best.pt checkpoints/carl_v10/best.pt
-    python chat.py --checkpoint checkpoints/carl_v13/best.pt
+    python chat.py --checkpoint checkpoints/carl_v14/best.pt
 
 ### Étape F : recherche par le sens dans Wikipédia
 
@@ -584,10 +584,68 @@ jamais lui-même d'une action. Examens inchangés (conversations 23/25).
     python fonctions.py "quel jour tombe Noël ?" "5 miles en km"
     python aiguilleur.py --entrainer
     python aiguilleur.py --tester
-    python examen_qui.py checkpoints/carl_v13/best.pt --aiguilleur
-    python analyse_capacites.py checkpoints/carl_v13/best.pt
+    python examen_qui.py checkpoints/carl_v14/best.pt --aiguilleur
+    python analyse_capacites.py checkpoints/carl_v14/best.pt
     python aiguilleur.py "Cite-moi 3 capitales d'Europe"
-    python examen_style.py checkpoints/carl_v13/best.pt --aiguilleur
+    python examen_style.py checkpoints/carl_v14/best.pt --aiguilleur
+
+### Carl v14 : les évidences d'un enfant de trois ans
+
+125M paramètres suffisent pour ce que sait un enfant de trois ans (environ
+2 bits par paramètre) ; ce qui manque, ce sont les données. Personne n'écrit
+« un chien a quatre pattes », parce que tout le monde le sait : Carl
+répondait « une main a six doigts », « un siècle compte quatre ans », « le
+mouton produit du bruit. Il s'agit d'un fromage à pâte molle ».
+
+`data/evidences.py` : 213 évidences (pattes, cris et petits des animaux,
+familles, milieux, couleurs, nombres du quotidien, parties du corps, objets,
+contraires, origine des aliments, métiers, saisons), chacune écrite sous 20
+formes, soit 4 260 phrases. La recette du groupe B de l'expérience des faits :
+des phrases seulement, jamais une question, pour ne pas lui apprendre à
+sauter sa base de faits. Les faits sont écrits par Claude et gardés en local
+(`data/claude/lot_evidences.txt`). Aucun ne vient des examens : « le feu est
+chaud » a été retiré, l'analyse des capacités le demande.
+
+`examen_evidences.py` : 426 questions à l'aveugle, deux par fait, posées
+autrement que dans les données (« Combien de pattes a un canard ? », « Que
+fait un plombier ? ») ; `data/evidences.py` vérifie qu'aucune n'y figure.
+Même recette que v13, les évidences ajoutées deux fois (13 min par graine) :
+
+| | v13 | **v14** | v14 (graine 2) |
+|---|---|---|---|
+| évidences, Carl seul (/426) | 108 (25 %) | **343 (81 %)** | 339 (80 %) |
+| évidences, avec l'aiguilleur | | **342** | 337 |
+| examen : nom / créateur / savoirs | 9 / 9 / 27 | 9 / 8 / 25 | 10 / 8 / 29 |
+| examen avec l'aiguilleur | 10 / 10 / 27 | 10 / 10 / 26 | 10 / 10 / 29 |
+| conversations (tours justes /25), seul / aiguilleur | 22 / 23 | 22 / 22 | 22 / 22 |
+| ouvertures / clôtures (/8) | 7 / 6 | **8 / 7** | 8 / 6 |
+| listes ou gras / vouvoiement (/8) | 1 / 1 | **0 / 0** | 0 / 0 |
+| longueur moyenne (demandes ouvertes) | 270 | 128 | 117 |
+| faits tapés vite, test (/37) | 21 | 25 | 23 |
+| qui est, seul (/20) | 9 | 9 | 9 |
+
+v14 devient la version par défaut : les évidences passent de 25 % à 81 %, et
+rien ne recule au-delà du bruit entre graines. Les réponses sont plus courtes.
+Contraires, métiers, origines, milieux : presque tout juste. Mais :
+- « Combien de pattes a un chien ? » -> six, pour les 22 animaux : cette
+  tournure exacte s'est figée sur « six », alors que « Un chien, ça a combien
+  de pattes ? » -> quatre. L'analyse, elle, a enfin « un insecte a 6 pattes »
+  (v13 : 15).
+- Les parties du corps et les objets se mélangent (« le corps utilise le nez
+  pour voir », « pour couper du papier, on utilise le bois ») : il a appris la
+  forme de ces phrases mieux que le lien entre chaque action et son objet.
+- Les évidences débordent parfois hors sujet : « Tu connais une devinette ? »
+  -> « L'inverse de plus jeune, c'est vieux » ; la banane mûre est « de
+  couleur rouge » (la forme d'une réponse de couleur, sans le fait, absent des
+  données).
+
+    python data/evidences.py
+    python sft.py --checkpoint checkpoints/carl_v8/best.pt \
+        --data data/sft/faits.json data/sft/claude_outils_style.json data/sft/claude_outils_style.json \
+               data/sft/calculs.json data/sft/comparia_2000_outils_style.json data/sft/conversations_outils_style.json \
+               data/sft/politesses.json data/sft/politesses.json data/sft/evidences.json data/sft/evidences.json \
+        --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v14
+    python examen_evidences.py checkpoints/carl_v13/best.pt checkpoints/carl_v14/best.pt
 
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 

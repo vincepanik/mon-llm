@@ -2,8 +2,8 @@
 Examen des « qui est... ? » : Carl seul, ou avec l'aiguilleur qui répond par
 la description Wikidata de la base de faits.
 
-    python examen_qui.py checkpoints/carl_v13/best.pt
-    python examen_qui.py checkpoints/carl_v13/best.pt --aiguilleur
+    python examen_qui.py checkpoints/carl_v14/best.pt
+    python examen_qui.py checkpoints/carl_v14/best.pt --aiguilleur
 
 Avant : « Qui était Albert Einstein ? » -> « un scientifique et chimiste
 allemand qui, en 1913, a créé le premier ordinateur moderne ».
@@ -50,7 +50,7 @@ def main() -> None:
     device = get_device()
     tok = BPETokenizer.load("tokenizer/vocab.json")
     reglages = dict(temperature=0.0, top_k=1, max_tokens=80, repetition_penalty=1.15)
-    for chemin in [a for a in sys.argv[1:] if not a.startswith("-")] or ["checkpoints/carl_v13/best.pt"]:
+    for chemin in [a for a in sys.argv[1:] if not a.startswith("-")] or ["checkpoints/carl_v14/best.pt"]:
         ck = load_checkpoint(chemin, device)
         model = GPT(ck["config"]).to(device)
         model.load_state_dict(ck["model"])
