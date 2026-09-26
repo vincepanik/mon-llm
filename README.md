@@ -685,6 +685,26 @@ demande exactement « Combien de pattes a... ? ».
     (même commande sft.py que v14, --out checkpoints/carl_v15)
     python examen_evidences.py checkpoints/carl_v14/best.pt checkpoints/carl_v15/best.pt
 
+Et en mélangeant les deux graines ? `melanger.py` fait la moyenne de leurs
+poids (« model soup », Wortsman et al., 2022 : des modèles affinés depuis le
+même point, ici v8). Sans rien réentraîner, le mélange tombe entre les deux
+graines sur presque tout :
+
+| | v15 | v15 (graine 2) | mélange |
+|---|---|---|---|
+| évidences (/426) | 367 | 376 | 377 |
+| débordement (/12) | 1 | 2 | 2 |
+| examen : nom / créateur / savoirs | 10 / 9 / 27 | 9 / 7 / 28 | 10 / 8 / 26 |
+| conversations, seul / aiguilleur | 22 / 23 | 22 / 23 | 22 / 23 |
+| ouvertures / clôtures | 8 / 8 | 6 / 7 | 8 / 7 |
+| faits tapés vite (/37) / qui est (/20) | 25 / 11 | 24 / 11 | 24 / 11 |
+
+Pas de gain net au-delà du bruit : v15 reste la version par défaut. Avec
+deux graines seulement, la moyenne ne fait que lisser ; l'idée marche mieux
+avec plus d'ingrédients, ou des recettes différentes.
+
+    python melanger.py checkpoints/carl_v15/best.pt checkpoints/carl_v15_graine2/best.pt --out checkpoints/carl_v15_melange
+
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 
 Le même Carl (nom, créateur, intentions) greffé sur Gemma 4 E4B (Google,
