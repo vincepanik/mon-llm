@@ -41,6 +41,7 @@ CONTINENTS = {"europ": "Europe", "afri": "Afrique", "asi": "Asie", "océanie": "
               "amérique du nord": "Amérique du Nord", "amerique du nord": "Amérique du Nord"}
 
 REPONSES = {
+    "reaction": ["Oui ! Tu as une autre question ?", "Eh oui ! Tu veux savoir autre chose ?"],
     "doute": ["Pas forcément : je suis un tout petit modèle et je me trompe souvent. Pour quelque chose "
               "d'important, vérifie ailleurs."],
     "humeur": ["Tant mieux ! Que puis-je faire pour toi ?", "Content de l'entendre ! Tu as une question ?"],
@@ -218,7 +219,13 @@ INDICES = {
     "nom": r"\b(tu|te|toi|ton|ta|tes|vous|votre|carl)\b|\bt'|\bt’|t'es",
     "createur": r"\b(tu|te|toi|ton|ta|tes|vous|votre|carl|ce modèle|ce programme)\b|\bt'|\bt’",
     "capacites": r"\b(tu|te|toi|ton|ta|tes|vous|votre|carl)\b|\bt'|\bt’",
+    # « Je suis crevé aujourd'hui » : un au revoir sans aucun mot d'au revoir.
+    "au_revoir": r"revoir|\bbye|plus\b|a\+|bientôt|bientot|ciao|tchao|demain|y aller|laisse|salut|bonsoir|"
+                 r"bonne (nuit|soirée|journée)|week-end|prochaine|m'en vais|file\b|partir|reparle|pour aujourd'hui|"
+                 r"retourne|tout à l'heure|déconnecte|fin de|arrête|adieu|j'y vais",
 }
+# « et la température ? » : trop court pour le classifieur, qui hésite entre relance et météo.
+METEO_COURTE = re.compile(r"^\s*(et\s+)?(pour\s+)?(la |le |les )?(temp[ée]rature|m[ée]t[ée]o|temps|pluie|soleil)\b[^?]{0,15}\??\s*$", re.I)
 
 
 # --- Les questions de faits, posées directement à la base ---
@@ -251,7 +258,7 @@ RELATIONS_DIRECTES = [
     ("siège", r"\b(siège|siege|bas[ée]e? où|bas[ée]e?)\b"),
     ("début", r"\b(commenc\w*|début|debut|déclench\w*)\b"),
     ("fin", r"\b(fin|termin\w*|fini)\b"),
-    ("pays", r"\b(dans quel pays|quel pays|ds quel pays|pays)\b"),
+    ("pays", r"\b(dans quel pays|quel pays|ds quel pays|pays)\b|^(c'est où|c est où|c'est ou|où se trouve|ou se trouve)\b"),
     ("date", r"\b(sorti\w*|publi\w*|paru|date|quand|quelle ann[ée]e|en quelle annee)\b"),
 ]
 REMPLISSAGE = set("""c koi quoi quel quelle quels quelles qui que qu est ce c'est cest est es a été ete était etait la le les l
@@ -325,6 +332,23 @@ AGE = re.compile(r"\bquel (âge|age)\b.{0,6}\b(as-tu|as tu|tu as|t'as|avez-vous|
                  r"\b(tu es|t'es|es-tu) n[ée]e? quand\b|\bquand (es-tu|t'es|tu es) n[ée]e?\b|\bton anniversaire\b", re.I)
 
 
+# « Elon Musk tu connais ? » : l'aiguilleur y voyait une question sur Carl (« tu »), Carl répondait
+# « Je ne connais pas Musk ». La base a sa description. Pas « tu connais une blague ? ».
+CONNAIS = re.compile(r"^\s*(?:(?:est-ce que )?(?:tu connais|connais-tu|tu sais qui est|tu as entendu parler de|t'as entendu parler de)"
+                     r"\s+(?P<a>.+?)|(?P<b>.+?),?\s+(?:tu (?:le |la |les |l')?connais|tu sais qui c'est|ça te dit quelque chose))"
+                     r"\s*[?!.]*\s*$", re.I)
+
+
+def connais(message: str) -> str | None:
+    m = CONNAIS.match(message)
+    if not m:
+        return None
+    nom = re.sub(r"^(ah|oh|bon|et|ok)\b[ ,.!]*(ok\b[ ,.!]*)?", "", (m["a"] or m["b"]).strip(), flags=re.I).strip()
+    if not nom or re.match(r"(un|une|des|du|de la|quelque|qqch|ça|ca|moi)\b", nom, re.I):
+        return None
+    return fait_direct(f"qui est {nom}")
+
+
 def decider(message: str, seuil: float = SEUIL) -> Decision:
     # « Qui est Kevin Pacini ? » : Carl inventait un homme politique. Le nom de
     # son créateur appelle toujours la même réponse, sans passer par le classifieur.
@@ -340,6 +364,10 @@ def decider(message: str, seuil: float = SEUIL) -> Decision:
     if AGE.search(message):
         return Decision("age", 1.0, "Je n'ai pas d'âge comme un humain : je suis un programme. Kevin Pacini m'a "
                                     "entraîné en 2026, et je ne vieillis pas entre deux conversations.")
+    if METEO_COURTE.match(message):
+        return Decision("meteo", 1.0, _choisir(REPONSES["meteo"], message))
+    if (reponse := connais(message)):
+        return Decision("fait", 1.0, reponse)
     classe, proba = classer(message)
     d = Decision(classe, proba)
     if proba < seuil or classe in ("autre", "liste"):
@@ -414,7 +442,10 @@ def attendus() -> list[tuple[str, set[str]]]:
           ("Tu es vraiment sûr de ça ?", {"doute"}), ("Hmm, t'es certain de ton coup ?", {"doute"}),
           ("Ça va super bien", {"humeur"}), ("Je suis crevé aujourd'hui", {"humeur", "autre"}),
           ("et la temperature ?", {"meteo"}), ("donne moi une recette de gâteau", {"autre"}),
-          ("tu as quel âge ?", {"age"}), ("quel âge a Emmanuel Macron ?", {"autre"})]
+          ("tu as quel âge ?", {"age"}), ("quel âge a Emmanuel Macron ?", {"autre"}),
+          ("ah oui, c'est vrai !", {"reaction"}), ("ah je vois", {"reaction"}), ("ah bon ?", {"doute"}),
+          ("Bonjour, quelle belle journée !", {"salut"}), ("Beyoncé, tu connais ?", {"autre"}),
+          ("tu connais une blague ?", {"autre"})]
     return a
 
 

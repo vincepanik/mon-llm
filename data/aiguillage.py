@@ -18,6 +18,7 @@ from pathlib import Path
 
 EXEMPLES = {
     "salut": [
+        "bonjour quelle belle journée", "salut, quelle journée !", "coucou, belle journée hein", "hello, quel beau matin", "le bonjour !", "bonjour à vous",
         "bonjour", "salut", "hello", "coucou", "bonsoir", "hey", "yo", "slt", "re", "bonjour carl", "salut carl",
         "hey carl", "coucou carl", "bonsoir carl", "hello carl", "bonjour à toi", "salut toi", "hello toi",
         "salut, ça va ?", "bonjour, comment vas-tu ?", "coucou, ça va ?", "hey, ça roule ?", "salut, la forme ?",
@@ -52,6 +53,13 @@ EXEMPLES = {
         "tu dis des bêtises", "ça ne répond pas à ma question", "tu es nul", "c'est incohérent",
         "ton poème est nul", "c'est raté", "ta réponse est ratée", "ton texte est mauvais", "c'est complètement faux",
         "ta blague n'est pas drôle", "ça ne marche pas ta recette", "tu inventes", "c'est archi faux",
+    ],
+    # « ah oui c'est vrai » était pris pour un doute (« Pas forcément... »), « ah ok » pour un merci.
+    "reaction": [
+        "ah oui c'est vrai", "ah ok", "ah d'accord", "d'accord je vois", "je vois", "ah étonnant", "intéressant",
+        "c'est intéressant", "ah bon d'accord", "c'est vrai", "effectivement", "ah oui", "incroyable", "waouh",
+        "ok je vois", "c'est drôle", "ah c'est marrant", "ah je ne savais pas", "je ne savais pas", "ah tiens",
+        "c'est fou", "ok d'accord", "ah oui en effet", "logique", "ça se tient", "ah mince", "oh", "wow",
     ],
     "doute": [
         "tu es sûr ?", "t'es sûr ?", "vraiment ?", "tu en es certain ?", "c'est vrai ?", "tu es certain ?", "sûr ?",
