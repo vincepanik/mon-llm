@@ -3,8 +3,8 @@ Analyse des capacités de Carl, domaine par domaine : ce qu'il sait faire, ce
 qu'il ne sait pas faire. Complète les examens (qui mesurent chacun une chose)
 par une vue d'ensemble, sur des demandes variées et jamais vues.
 
-    python analyse_capacites.py checkpoints/carl_v14/best.pt            # Carl et l'aiguilleur
-    python analyse_capacites.py checkpoints/carl_v14/best.pt --seul     # Carl seul
+    python analyse_capacites.py checkpoints/carl_v15/best.pt            # Carl et l'aiguilleur
+    python analyse_capacites.py checkpoints/carl_v15/best.pt --seul     # Carl seul
 
 Les réponses sont gardées dans resultats/analyse_<version>.json. Là où c'est
 possible, la notation est automatique (mots attendus) ; les réponses libres
@@ -117,7 +117,7 @@ def main() -> None:
     from utils import get_device, load_checkpoint
 
     seul = "--seul" in sys.argv
-    chemin = next((a for a in sys.argv[1:] if not a.startswith("-")), "checkpoints/carl_v14/best.pt")
+    chemin = next((a for a in sys.argv[1:] if not a.startswith("-")), "checkpoints/carl_v15/best.pt")
     device = get_device()
     tok = BPETokenizer.load("tokenizer/vocab.json")
     ck = load_checkpoint(chemin, device)

@@ -8,11 +8,17 @@ dans les données d'entraînement (data/evidences.py le vérifie).
     python examen_evidences.py checkpoints/carl_v13/best.pt --aiguilleur
 
 Avant : « Un insecte a 15 pattes », « un chien a 36 pattes ».
+
+Le débordement : des demandes ouvertes où une phrase d'évidence n'a rien à
+faire. v14 répondait « Une idée de repas, c'est pour un repas. »
+
+    python examen_evidences.py --debordement checkpoints/carl_v14/best.pt   # seulement le débordement
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -20,6 +26,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "data"))
 
 import evidences  # noqa: E402
+
+# Demandes ouvertes, et les moules des phrases d'évidences qui n'y ont pas leur place.
+DEBORDEMENT = ["Une idée de repas ?", "Une recette à me donner ?", "Tu connais une devinette ?",
+               "Un conseil pour bien dormir ?", "Une idée de cadeau pour ma mère ?", "Que faire ce week-end ?",
+               "Tu connais une blague ?", "Un film à voir ce soir ?", "Une activité pour un enfant de 5 ans ?",
+               "Un prénom pour mon chat ?", "Une idée de sortie à Lyon ?", "Un livre à lire cet été ?"]
+MOULES = re.compile(r", c'est pour |contraire d|l'inverse d|l'opposé d|\bpattes\b|tout le monde sait que|retiens que|"
+                    r"on se sert d|il faut savoir que|la saison où|on appelle .* la personne|fait partie des|"
+                    r"est de couleur|appartient à la famille", re.I)
 
 
 def main() -> None:
@@ -42,9 +57,22 @@ def main() -> None:
         model = GPT(ck["config"]).to(device)
         model.load_state_dict(ck["model"])
         model.eval()
+        deborde = []
+        for q in DEBORDEMENT:
+            msg = [{"role": "user", "content": q}]
+            brut = (repondre_aiguille(model, tok, msg, device, **reglages)[0] if aiguille
+                    else repondre(model, tok, msg, device, brut=True, **reglages))
+            texte = afficher(brut).strip()
+            if MOULES.search(texte):
+                deborde.append(f"{q} -> {texte[:90]!r}")
+        print(f"\n##### {chemin}" + (" (aiguilleur)" if aiguille else ""))
+        print(f"  == débordement : {len(deborde)}/{len(DEBORDEMENT)} demandes ouvertes répondues par une évidence")
+        for ligne in deborde:
+            print(f"     {ligne}")
+        if "--debordement" in sys.argv:
+            continue
         par_relation: dict[str, list[bool]] = defaultdict(list)
         reponses = []
-        print(f"\n##### {chemin}" + (" (aiguilleur)" if aiguille else ""))
         for t in test:
             msg = [{"role": "user", "content": t["question"]}]
             brut = (repondre_aiguille(model, tok, msg, device, **reglages)[0] if aiguille

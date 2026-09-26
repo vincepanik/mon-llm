@@ -94,7 +94,7 @@ seule par défaut (`--memoire 0`).
     python sft.py --checkpoint checkpoints/run_150m/best.pt \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 \
         --epochs 2 --out checkpoints/carl
-    python chat.py --checkpoint checkpoints/carl_v14/best.pt
+    python chat.py --checkpoint checkpoints/carl_v15/best.pt
 
 ### Niveau 1 : Carl de 125M avec compar:IA, puis DPO
 
@@ -173,7 +173,7 @@ fait oublier des faits. La recherche est donc désactivée par défaut
     python sft.py --checkpoint checkpoints/carl_v5/best.pt \
         --data data/sft/lecture.json data/sft/comparia_reparation.json data/sft/conversations.json data/sft/calculs.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 300 --epochs 1 --lr 3e-5 --out checkpoints/carl_v6
-    python chat.py --checkpoint checkpoints/carl_v14/best.pt
+    python chat.py --checkpoint checkpoints/carl_v15/best.pt
 
 ### Génération de Carl : relances, boucles, longueur
 
@@ -229,7 +229,7 @@ connaissances viennent du pré-entraînement.
         --data data/sft/claude.json data/sft/claude.json data/sft/claude.json data/sft/calculs.json \
                data/sft/comparia_2000.json data/sft/conversations.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v8
-    python chat.py --checkpoint checkpoints/carl_v14/best.pt
+    python chat.py --checkpoint checkpoints/carl_v15/best.pt
 
 ### Étape E : une base de faits Wikidata (Carl v10)
 
@@ -274,7 +274,7 @@ année ») : l'outil ne sait que ce qu'on y a mis.
                data/sft/comparia_2000_outils.json data/sft/conversations_outils.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v10
     python examen_faits.py checkpoints/carl_v8/best.pt checkpoints/carl_v10/best.pt
-    python chat.py --checkpoint checkpoints/carl_v14/best.pt
+    python chat.py --checkpoint checkpoints/carl_v15/best.pt
 
 ### Étape F : recherche par le sens dans Wikipédia
 
@@ -584,10 +584,10 @@ jamais lui-même d'une action. Examens inchangés (conversations 23/25).
     python fonctions.py "quel jour tombe Noël ?" "5 miles en km"
     python aiguilleur.py --entrainer
     python aiguilleur.py --tester
-    python examen_qui.py checkpoints/carl_v14/best.pt --aiguilleur
-    python analyse_capacites.py checkpoints/carl_v14/best.pt
+    python examen_qui.py checkpoints/carl_v15/best.pt --aiguilleur
+    python analyse_capacites.py checkpoints/carl_v15/best.pt
     python aiguilleur.py "Cite-moi 3 capitales d'Europe"
-    python examen_style.py checkpoints/carl_v14/best.pt --aiguilleur
+    python examen_style.py checkpoints/carl_v15/best.pt --aiguilleur
 
 ### Carl v14 : les évidences d'un enfant de trois ans
 
@@ -646,6 +646,44 @@ Contraires, métiers, origines, milieux : presque tout juste. Mais :
                data/sft/politesses.json data/sft/politesses.json data/sft/evidences.json data/sft/evidences.json \
         --extra data/identite_carl.json --extra-repeat 2 --enchainer 200 --epochs 1 --lr 3e-5 --out checkpoints/carl_v14
     python examen_evidences.py checkpoints/carl_v13/best.pt checkpoints/carl_v14/best.pt
+
+### Carl v15 : les évidences aussi en questions, sans débordement
+
+En vrai, avec v14 : « combien de pattes à un chien ? » -> six ; « une idée de
+repas ? » -> « Une idée de repas, c'est pour un repas. » Deux causes :
+- le seul « Combien de pattes a... ? » des données était « Combien de pattes a
+  un insecte ? » -> six (conversations de Claude) : v14, qui n'avait vu les
+  évidences qu'en phrases, avait appris ce moule par cœur ;
+- les demandes « Une brosse à dents ? » -> « Une brosse à dents, c'est pour... »
+  lui apprenaient à répondre à tout « Un truc ? » par une évidence.
+
+v15 : deux questions par fait, formulées autrement que l'examen (« Il a
+combien de pattes, le chien ? »), et plus de demandes réduites à un nom.
+`examen_evidences.py` mesure aussi le débordement : 12 demandes ouvertes
+(idée de repas, devinette, conseil pour dormir...) répondues par une phrase
+d'évidence. L'aiguilleur a changé entre-temps (« j'ai faim », « et la
+température ? ») : les colonnes « avec l'aiguilleur » de v15 en profitent.
+
+| | v14 | **v15** | v15 (graine 2) |
+|---|---|---|---|
+| évidences, Carl seul (/426) | 343 (81 %) | **367 (86 %)** | 376 (88 %) |
+| dont pattes (/54) | 32 | **48** | 44 |
+| débordement (/12, moins = mieux) | 4 | **1** | 2 |
+| examen : nom / créateur / savoirs | 9 / 8 / 25 | **10 / 9 / 27** | 9 / 7 / 28 |
+| examen avec l'aiguilleur | 10 / 10 / 26 | 10 / 10 / 27 | 10 / 9 / 28 |
+| conversations (/25), seul / aiguilleur | 22 / 22 | 22 / **23** | 22 / 23 |
+| ouvertures / clôtures (/8) | 8 / 7 | **8 / 8** | 6 / 7 |
+| faits tapés vite, test (/37) | 25 | 25 | 24 |
+| qui est, seul (/20) | 9 | **11** | 11 |
+
+v15 devient la version par défaut. Restent : les parties du corps et les
+objets encore mélangés (« le corps utilise le nez pour voir », « une clé
+permet de planter un clou »), et cinq animaux à « six pattes » quand on
+demande exactement « Combien de pattes a... ? ».
+
+    python data/evidences.py
+    (même commande sft.py que v14, --out checkpoints/carl_v15)
+    python examen_evidences.py checkpoints/carl_v14/best.pt checkpoints/carl_v15/best.pt
 
 ### Niveau 4 : Carl sur Gemma 4 (`carl_gemma/`)
 

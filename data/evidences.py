@@ -276,9 +276,31 @@ PHRASES = {
                "On sait {que_V} {en_X}.", "{En_X}, en général, {V}.", "Quand vient {X}, {V}.",
                "{X_maj}, c'est la saison où {V}.", "Chaque année, {en_X}, {V}.", "Ce qui arrive {en_X} : {V}."],
 }
+# Pas de « Une brosse à dents ? » -> « Une brosse à dents, c'est pour... » : v14 plaquait ce moule sur
+# « une idée de repas ? » (« Une idée de repas, c'est pour un repas »).
 DEMANDES = ["Dis-moi quelque chose sur {sujet}.", "Un fait sur {sujet} ?", "Apprends-moi quelque chose.",
-            "Raconte-moi quelque chose.", "Un fait intéressant ?", "{sujet_maj} ?", "Tu connais {sujet} ?",
-            "Une chose à savoir sur {sujet} ?", "Apprends-moi un truc simple.", "Une évidence ?"]
+            "Raconte-moi quelque chose.", "Un fait intéressant ?", "Une chose à savoir sur {sujet} ?",
+            "Apprends-moi un truc simple.", "Une évidence ?"]
+# v15 : deux questions par fait, formulées autrement que l'examen. v14 n'avait que des phrases, et
+# « Combien de pattes a un chien ? » -> six : la seule question de ce moule dans les données
+# (« Combien de pattes a un insecte ? », dans les conversations de Claude) l'emportait.
+QUESTIONS = {
+    "pattes": ["Il a combien de pattes, {X} ?", "{X_maj} marche sur combien de pattes ?"],
+    "pattes0": ["Il a combien de pattes, {X} ?", "{X_maj} marche sur combien de pattes ?"],
+    "cri": ["Quel est le cri {de_X} ?", "Comment crie {X} ?"],
+    "petit": ["Quel est le nom du petit {de_X} ?", "Comment on appelle un bébé {nom_X} ?"],
+    "famille": ["{X_maj} fait partie de quelle famille ?", "Dans quelle catégorie on range {X} ?"],
+    "milieu": ["Où habite {X} ?", "Dans quel endroit on trouve {X} ?"],
+    "couleur": ["Quelle est la couleur {de_X} ?", "{X_maj} est de quelle couleur ?"],
+    "nombre": ["{X_maj} compte combien {de_U} ?", "Il y a combien {de_U} dans {X} ?"],
+    "sens": ["Qu'est-ce qui nous permet {de_inf} ?", "On utilise quoi pour {A} ?"],
+    "outil": ["Quel objet sert à {A} ?", "Il faut quoi pour {A} ?"],
+    "propriete": ["Comment on décrit {X} ?", "Qu'est-ce qui caractérise {X} ?"],
+    "contraire": ["Quel mot s'oppose à « {A} » ?", "Donne-moi l'opposé {de_A}."],
+    "origine": ["On fabrique {X} avec quoi ?", "{X_maj}, on l'obtient comment ?"],
+    "metier": ["Quel est le métier {de_X} ?", "{Un_X}, ça sert à quoi ?"],
+    "saison": ["Comment est la nature {en_X} ?", "Qu'est-ce qui arrive {en_X} ?"],
+}
 
 # Questions de l'examen à l'aveugle : aucune n'est dans les données, sous aucune forme.
 TEST = {
@@ -313,6 +335,9 @@ def donnees(faits: list[dict]) -> list[list[dict]]:
         for i in range(PHRASES_PAR_FAIT):
             convs.append([{"role": "user", "content": maj(R.choice(DEMANDES).format(**g))},
                           {"role": "assistant", "content": maj(phrases[i % len(phrases)].format(**g))}])
+        for q in QUESTIONS[cle_modele(f)]:
+            convs.append([{"role": "user", "content": maj(q.format(**g))},
+                          {"role": "assistant", "content": maj(R.choice(phrases).format(**g))}])
     R.shuffle(convs)
     return convs
 
